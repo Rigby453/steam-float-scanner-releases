@@ -2,7 +2,7 @@
 
 Official Windows installers, signed update manifests and source archives for
 Steam Float Scanner. The current published version is
-[v0.2.134](https://github.com/Rigby453/steam-float-scanner-releases/releases/tag/v0.2.134).
+[v0.2.135](https://github.com/Rigby453/steam-float-scanner-releases/releases/tag/v0.2.135).
 Older releases remain available in the [release history](https://github.com/Rigby453/steam-float-scanner-releases/releases).
 
 The [source repository](https://github.com/parserst/steam-float-scanner) holds
