@@ -1,3 +1,33 @@
+# Steam Float Scanner releases
+
+Current release: **0.2.149**.
+[Installer and all eleven verified assets](https://github.com/Rigby453/steam-float-scanner-releases/releases/tag/v0.2.149).
+
+Windows EXE: 112111333 bytes, SHA256
+`9b0331964fce995fea8855b160fa4af93af500e080da5301ff18900f4df17a4f`.
+Linux DEB: 106330604 bytes, SHA256
+`6d17e475ccce102c1a8c74b950dbac055af5b4ed65b40c3142e28d1cd6a09770`.
+
+[Exact source tag](https://github.com/parserst/steam-float-scanner/tree/v0.2.149)
+identifies build commit `c607d58377e98fe5841fe80de229b48f34982ac0`.
+Native Windows/Ubuntu CI passed source suites and package verification.
+[Signing and publication](https://github.com/Rigby453/steam-float-scanner-releases/actions/runs/37908913473)
+verified all eleven public assets before latest promotion. The existing Ed25519
+trust key is retained; the new release is immutable. Independent Windows/Linux
+public checks report145→AVAILABLE149 and149→UP_TO_DATE.
+
+[Automated signing instructions](SIGNING.md) let an authorized Cloud dispatcher
+publish through GitHub Actions without receiving the signing key. The old
+encrypted PEM and passphrase are Environment Secrets restricted to main;
+trusted signer bytes are pinned by the workflow. Secret values are never in Git.
+A Cloud caller still needs repository access and Actions dispatch permission.
+
+GUI baseline price/proxy-order/layout failures remain unresolved; package
+proof does not establish a clean full GUI suite. Owner-profile installation,
+live AUTO_BUY/Steam and Seattle deployment are separate checks.
+
+## Previous release history
+
 # Steam Float Scanner Windows releases
 
 Current release: **0.2.145**.
