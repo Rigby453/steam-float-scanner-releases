@@ -29,8 +29,12 @@ A Cloud caller still needs repository access and Actions dispatch permission.
 GUI baseline price/proxy-order/layout failures remain unresolved; package
 proof does not establish a clean full GUI suite. Owner-profile installation,
 live AUTO_BUY/Steam and Seattle deployment are separate checks. In particular,
-150 does not repair the newly confirmed Steam PURCHASE_CONTRACT_ROUTE_CHANGED;
-that needs separately reviewed and signed compatibility metadata.
+150's installer does not itself change Steam compatibility. The separately
+reviewed and signed revision2026100901 is now published in the existing
+purchase-compatibility-v1 channel. It preserves all eleven older deployments,
+their expiry and the existing verification guard. Fresh production verification
+passed; the owner's Seattle150 Start reached RUNNING at2026-10-09T10:42:47.992Z.
+This demonstrates startup and contract acceptance, not a completed purchase.
 
 ## Previous release history
 
