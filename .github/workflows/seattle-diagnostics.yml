@@ -1,0 +1,32 @@
+name: Seattle read-only diagnostics
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: seattle-read-only-diagnostics
+  cancel-in-progress: false
+
+jobs:
+  diagnose:
+    if: github.repository == 'Rigby453/steam-float-scanner-releases' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    environment: seattle-diagnostics
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          sparse-checkout: tools
+      - name: Read identity, installed version and bounded error counters
+        shell: bash
+        env:
+          SFS_SEATTLE_SSH_PRIVATE_KEY: ${{ secrets.SFS_SEATTLE_SSH_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          printf '%s\n' 'b8b07f2816bc6ed8f83c6c727b9d9b2945253554e4ae8f5385ffa0ed1344838d  tools/seattle-diagnostics.py' | sha256sum --check --strict
+          python3 -I tools/seattle-diagnostics.py
