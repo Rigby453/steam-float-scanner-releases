@@ -1,0 +1,83 @@
+name: Sign and publish verified Scanner release
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_id:
+        description: Existing new stable draft release ID
+        required: true
+        type: string
+      version:
+        description: Exact stable version, for example 0.2.149
+        required: true
+        type: string
+      source_commit:
+        description: Exact 40-character reviewed source commit
+        required: true
+        type: string
+      source_record_sha256:
+        description: Exact SHA256 of release-source.json in the draft
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: official-release-publication
+  cancel-in-progress: false
+
+env:
+  SFS_RELEASE_ID: ${{ inputs.release_id }}
+  SFS_VERSION: ${{ inputs.version }}
+  SFS_SOURCE_COMMIT: ${{ inputs.source_commit }}
+  SFS_REQUEST_SHA256: ${{ inputs.source_record_sha256 }}
+  NODE_OPTIONS: ''
+  NODE_PATH: ''
+
+jobs:
+  verify:
+    if: github.repository == 'Rigby453/steam-float-scanner-releases' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          sparse-checkout: tools
+      - name: Verify pinned trusted code
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s\n' '533d7204d62667225109cbd139c1cc1aa06eb1494eec4875fe2591774b8b2b2e  tools/sign-release.mjs' | sha256sum --check --strict
+          node --test tools/sign-release.test.mjs
+      - name: Verify exact draft and native proof consistency without signing secrets
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node tools/sign-release.mjs verify
+
+  publish:
+    needs: verify
+    if: github.repository == 'Rigby453/steam-float-scanner-releases' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment: release-signing
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          sparse-checkout: tools
+      - name: Sign exact manifests and publish verified assets
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          SFS_UPDATE_PRIVATE_KEY_PEM: ${{ secrets.SFS_UPDATE_PRIVATE_KEY_PEM }}
+          SFS_UPDATE_KEY_PASSPHRASE: ${{ secrets.SFS_UPDATE_KEY_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          printf '%s\n' '533d7204d62667225109cbd139c1cc1aa06eb1494eec4875fe2591774b8b2b2e  tools/sign-release.mjs' | sha256sum --check --strict
+          node tools/sign-release.mjs publish

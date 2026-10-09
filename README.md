@@ -48,3 +48,8 @@ server repository was identified. Historical
 and earlier releases remain immutable. Installed142 and later use this public
 signed channel; older141 needs a manual first transition because its protected
 updater Edge was not deployed.
+
+## Automated signing
+
+[Cloud signing and publication instructions](SIGNING.md). The trusted existing
+key is held in protected GitHub Environment Secrets; never add it to Git or chat.
