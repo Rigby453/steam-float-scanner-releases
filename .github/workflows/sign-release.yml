@@ -40,6 +40,10 @@ jobs:
     if: github.repository == 'Rigby453/steam-float-scanner-releases' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    # GitHub requires write access to read an unpublished draft release.
+    # This job still has no release-signing environment or signing secrets.
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
