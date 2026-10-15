@@ -102,6 +102,7 @@ jobs:
         with:
           name: native-package-Windows-${{ inputs.source_commit }}
           if-no-files-found: error
+          include-hidden-files: true
           path: source/release/
       - uses: actions/upload-artifact@v4
         if: failure()
