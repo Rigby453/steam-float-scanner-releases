@@ -53,7 +53,9 @@ jobs:
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
-          sparse-checkout: tools
+          sparse-checkout: |
+            tools
+            .github/workflows
       - name: Verify exact trusted helper and disposable-key tests without signing secrets
         shell: bash
         run: |
@@ -78,7 +80,9 @@ jobs:
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
-          sparse-checkout: tools
+          sparse-checkout: |
+            tools
+            .github/workflows
       - name: Sign with existing anchor and publish only the reviewed fixed-tag metadata
         shell: bash
         env:
