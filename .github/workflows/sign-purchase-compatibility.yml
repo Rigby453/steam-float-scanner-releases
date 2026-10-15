@@ -1,0 +1,91 @@
+name: Sign and publish one reviewed purchase compatibility snapshot
+
+on:
+  workflow_dispatch:
+    inputs:
+      payload_base64:
+        description: Base64 of the exact reviewed compact unsigned JSON payload
+        required: true
+        type: string
+      payload_sha256:
+        description: SHA256 of those exact decoded UTF8 payload bytes
+        required: true
+        type: string
+      previous_sha256:
+        description: SHA256 of current publicly verified signed compatibility.json
+        required: true
+        type: string
+      review_base64:
+        description: Base64 of the completed explicit exact-snapshot review record
+        required: true
+        type: string
+      review_sha256:
+        description: SHA256 of those exact decoded UTF8 review-record bytes
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+# Serialize with the existing installer publication workflow. No latest/tag writes.
+concurrency:
+  group: official-release-publication
+  cancel-in-progress: false
+
+env:
+  SFS_COMPATIBILITY_PAYLOAD_BASE64: ${{ inputs.payload_base64 }}
+  SFS_COMPATIBILITY_PAYLOAD_SHA256: ${{ inputs.payload_sha256 }}
+  SFS_COMPATIBILITY_PREVIOUS_SHA256: ${{ inputs.previous_sha256 }}
+  SFS_COMPATIBILITY_REVIEW_BASE64: ${{ inputs.review_base64 }}
+  SFS_COMPATIBILITY_REVIEW_SHA256: ${{ inputs.review_sha256 }}
+  NODE_OPTIONS: ''
+  NODE_PATH: ''
+
+jobs:
+  verify:
+    if: github.repository == 'Rigby453/steam-float-scanner-releases' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          sparse-checkout: tools
+      - name: Verify exact trusted helper and disposable-key tests without signing secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s\n' 'a07378a535d79e63bca1f5fed3acbcacb5ab9e58d71ecf06c2f71a4c2b4bb72e  tools/sign-purchase-compatibility.mjs' | sha256sum --check --strict
+          node --test tools/sign-purchase-compatibility.test.mjs
+      - name: Verify exact payload, external review, existing signature and unchanged installer latest
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node tools/sign-purchase-compatibility.mjs verify
+
+  publish:
+    needs: verify
+    if: github.repository == 'Rigby453/steam-float-scanner-releases' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: release-signing
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          sparse-checkout: tools
+      - name: Sign with existing anchor and publish only the reviewed fixed-tag metadata
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          SFS_UPDATE_PRIVATE_KEY_PEM: ${{ secrets.SFS_UPDATE_PRIVATE_KEY_PEM }}
+          SFS_UPDATE_KEY_PASSPHRASE: ${{ secrets.SFS_UPDATE_KEY_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          printf '%s\n' 'a07378a535d79e63bca1f5fed3acbcacb5ab9e58d71ecf06c2f71a4c2b4bb72e  tools/sign-purchase-compatibility.mjs' | sha256sum --check --strict
+          node tools/sign-purchase-compatibility.mjs publish
