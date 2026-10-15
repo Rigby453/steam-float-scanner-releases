@@ -95,8 +95,11 @@ jobs:
         env:
           ELECTRON_RUN_AS_NODE: '1'
         run: |
-          & '.\release\win-unpacked\Steam Float Scanner.exe' tools/release-acceptance/packaged-financial.mjs --root . --output release/financial-acceptance.json
+          & '.\release\win-unpacked\Steam Float Scanner.exe' tools/release-acceptance/packaged-financial.mjs --root . --output release/financial-acceptance.json | Out-Host
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (-not (Test-Path -LiteralPath 'release/financial-acceptance.json' -PathType Leaf)) { throw 'Native financial acceptance did not write its proof' }
+          $financialProof = Get-Content -LiteralPath 'release/financial-acceptance.json' -Raw | ConvertFrom-Json
+          if ($financialProof.status -ne 'PASS') { throw 'Native financial acceptance proof is not PASS' }
       - uses: actions/upload-artifact@v4
         if: success()
         with:
