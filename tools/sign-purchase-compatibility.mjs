@@ -2,6 +2,7 @@
 import { createHash, createPrivateKey, createPublicKey, sign, verify } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 import { pathToFileURL } from 'node:url';
+import { gunzipSync } from 'node:zlib';
 
 export const REPOSITORY = 'Rigby453/steam-float-scanner-releases';
 export const TAG = 'purchase-compatibility-v1';
@@ -11,6 +12,7 @@ export const ORIGINAL_EXPIRY = '2026-11-04T20:12:56.038Z';
 const API = `https://api.github.com/repos/${REPOSITORY}`;
 const MAX_SIGNED = 128 * 1024;
 const MAX_PAYLOAD = 32 * 1024;
+const MAX_INFLATED_PAYLOAD = 64 * 1024;
 const MAX_API = 256 * 1024;
 const DAY = 86_400_000;
 const fail = code => { throw new Error(code); };
@@ -94,14 +96,25 @@ function fromBase64(text, max) {
   return bytes;
 }
 
+// Dispatch compression is data transport only. Hash/review/signature checks
+// continue to bind the exact decoded JSON bytes, never the compressed container.
+function dispatchBytes(text, encoding, limit) {
+  const bytes = fromBase64(text, MAX_PAYLOAD);
+  if (encoding === 'utf8-json') return bytes;
+  try { return gunzipSync(bytes, { maxOutputLength: limit }); }
+  catch { fail('INVALID_COMPRESSED_INPUT'); }
+}
+
 export function validateInputs(env) {
   requireThat(env.GITHUB_REPOSITORY === REPOSITORY && env.GITHUB_REF === 'refs/heads/main'
     && env.GITHUB_EVENT_NAME === 'workflow_dispatch'
     && env.GITHUB_WORKFLOW_REF === `${REPOSITORY}/.github/workflows/sign-purchase-compatibility.yml@refs/heads/main`, 'UNTRUSTED_WORKFLOW_CONTEXT');
   requireThat(sha(env.SFS_COMPATIBILITY_PAYLOAD_SHA256) && sha(env.SFS_COMPATIBILITY_PREVIOUS_SHA256)
     && sha(env.SFS_COMPATIBILITY_REVIEW_SHA256), 'INVALID_DISPATCH_HASH');
-  const payloadBytes = fromBase64(env.SFS_COMPATIBILITY_PAYLOAD_BASE64, MAX_PAYLOAD);
-  const reviewBytes = fromBase64(env.SFS_COMPATIBILITY_REVIEW_BASE64, MAX_PAYLOAD);
+  const encoding = env.SFS_COMPATIBILITY_INPUT_ENCODING ?? 'utf8-json';
+  requireThat(['utf8-json', 'gzip-json'].includes(encoding), 'INVALID_INPUT_ENCODING');
+  const payloadBytes = dispatchBytes(env.SFS_COMPATIBILITY_PAYLOAD_BASE64, encoding, MAX_INFLATED_PAYLOAD);
+  const reviewBytes = dispatchBytes(env.SFS_COMPATIBILITY_REVIEW_BASE64, encoding, MAX_PAYLOAD);
   requireThat(env.SFS_COMPATIBILITY_PAYLOAD_BASE64.length + env.SFS_COMPATIBILITY_REVIEW_BASE64.length <= 60_000, 'DISPATCH_PAYLOAD_TOO_LARGE');
   requireThat(digest(payloadBytes) === env.SFS_COMPATIBILITY_PAYLOAD_SHA256
     && digest(reviewBytes) === env.SFS_COMPATIBILITY_REVIEW_SHA256, 'DISPATCH_HASH_MISMATCH');
@@ -325,12 +338,12 @@ export async function run(mode, env = process.env, fetcher = fetch, testOptions 
     && digest(await client.asset(archived)) === inputs.previousSha256, 'FINAL_API_READBACK_MISMATCH');
   parseSigned(await client.asset(promoted), publicKey);
   let publicReadback = false;
-  for (let attempt = 0; attempt < 6; attempt++) {
+  for (let attempt = 0; attempt < 12; attempt++) {
     try {
       const publicBytes = await client.publicAsset('compatibility.json');
       if (digest(publicBytes) === digest(bytes)) { parseSigned(publicBytes, publicKey); publicReadback = true; break; }
     } catch { /* CDN visibility can lag; only repeat anonymous reads. */ }
-    if (attempt < 5) await (testOptions.delay ?? delay)(2000);
+    if (attempt < 11) await (testOptions.delay ?? delay)(5000);
   }
   requireThat(publicReadback, 'FINAL_PUBLIC_READBACK_MISMATCH');
   await requireControlUnchanged(client, snapshot);

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { generateKeyPairSync } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import test from 'node:test';
+import { gzipSync } from 'node:zlib';
 import {
   REPOSITORY, TAG, REVISION_FLOOR, ORIGINAL_EXPIRY, createClient, digest, parseSigned,
   run, signedBytes, signPayload, validateInputs, validatePayload, validateTransition,
@@ -111,6 +112,47 @@ function remote(f = fixture(), options = {}) {
 }
 const testOptions = { now, publicKey, delay: async () => {} };
 const error = code => e => e instanceof Error && e.message === code;
+
+test('bounded gzip dispatch preserves exact uncompressed payload/review/signature identity', async () => {
+  const f = fixture();
+  f.env.SFS_COMPATIBILITY_INPUT_ENCODING = 'gzip-json';
+  for (const key of ['SFS_COMPATIBILITY_PAYLOAD_BASE64', 'SFS_COMPATIBILITY_REVIEW_BASE64']) f.env[key] = gzipSync(Buffer.from(f.env[key], 'base64')).toString('base64');
+  const parsed = validateInputs(f.env);
+  assert.deepEqual(parsed.payload, f.inputs.payload);
+  assert.equal(parsed.payloadSha256, f.inputs.payloadSha256);
+  assert.equal(parsed.reviewSha256, f.inputs.reviewSha256);
+  const server = remote(f);
+  const receipt = await run('publish', f.env, server.fetcher, testOptions);
+  assert.equal(receipt.status, 'PUBLISHED_SIGNATURE_AND_PUBLIC_READBACK_VERIFIED');
+  assert.equal(receipt.payloadSha256, f.inputs.payloadSha256);
+});
+
+test('gzip permits the reviewed payload above32KiB while keeping raw dispatch bounded', () => {
+  const f = fixture(), bytes = Buffer.concat([json(f.payload), Buffer.alloc(32 * 1024, 32)]);
+  f.review.payloadSha256 = digest(bytes);
+  const review = json(f.review);
+  Object.assign(f.env, { SFS_COMPATIBILITY_PAYLOAD_SHA256: digest(bytes), SFS_COMPATIBILITY_REVIEW_SHA256: digest(review),
+    SFS_COMPATIBILITY_PAYLOAD_BASE64: bytes.toString('base64'), SFS_COMPATIBILITY_REVIEW_BASE64: review.toString('base64') });
+  assert.throws(() => validateInputs(f.env), error('INVALID_BASE64_INPUT'));
+  Object.assign(f.env, { SFS_COMPATIBILITY_INPUT_ENCODING: 'gzip-json',
+    SFS_COMPATIBILITY_PAYLOAD_BASE64: gzipSync(bytes).toString('base64'), SFS_COMPATIBILITY_REVIEW_BASE64: gzipSync(review).toString('base64') });
+  const inputs = validateInputs(f.env);
+  validateTransition(inputs, f.previous, now);
+  assert.equal(inputs.payloadSha256, digest(bytes));
+});
+
+test('gzip rejects decompression bombs, broken containers and unknown encodings before network or signing', () => {
+  for (const key of ['SFS_COMPATIBILITY_PAYLOAD_BASE64', 'SFS_COMPATIBILITY_REVIEW_BASE64']) {
+    for (const bytes of [Buffer.from('not-gzip'), gzipSync(Buffer.alloc(128 * 1024, 32))]) {
+      const f = fixture(); f.env.SFS_COMPATIBILITY_INPUT_ENCODING = 'gzip-json';
+      for (const k of ['SFS_COMPATIBILITY_PAYLOAD_BASE64', 'SFS_COMPATIBILITY_REVIEW_BASE64']) f.env[k] = gzipSync(Buffer.from(f.env[k], 'base64')).toString('base64');
+      f.env[key] = bytes.toString('base64');
+      assert.throws(() => validateInputs(f.env), error('INVALID_COMPRESSED_INPUT'));
+    }
+  }
+  const f = fixture(); f.env.SFS_COMPATIBILITY_INPUT_ENCODING = 'other';
+  assert.throws(() => validateInputs(f.env), error('INVALID_INPUT_ENCODING'));
+});
 
 test('both protected-environment workflow jobs pin the exact standalone helper bytes', () => {
   const helper = readFileSync(new URL('./sign-purchase-compatibility.mjs', import.meta.url));

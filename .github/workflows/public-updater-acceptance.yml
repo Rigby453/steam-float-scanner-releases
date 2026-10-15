@@ -1,0 +1,99 @@
+name: Public updater acceptance for reviewed source client1.0.1
+
+on:
+  workflow_dispatch:
+    inputs:
+      native_proof_sha256:
+        description: Reviewed exact SHA256 of public build-verification.json after native PASS
+        required: true
+        type: string
+      installer_sha256:
+        description: Exact native-proven Steam-Float-Scanner-Setup-1.0.1.exe SHA256
+        required: true
+        type: string
+      installer_bytes:
+        description: Exact byte count of the same native-proven installer
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: public-updater-acceptance-1.0.1
+  cancel-in-progress: false
+
+jobs:
+  public-source-client:
+    if: github.repository == 'Rigby453/steam-float-scanner-releases' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    env:
+      SFS_NATIVE_PROOF_SHA256: ${{ inputs.native_proof_sha256 }}
+      SFS_EXPECTED_INSTALLER_SHA256: ${{ inputs.installer_sha256 }}
+      SFS_EXPECTED_INSTALLER_BYTES: ${{ inputs.installer_bytes }}
+      SFS_ACCEPTANCE_WORKFLOW_SHA: ${{ github.sha }}
+      NODE_OPTIONS: ''
+      NODE_PATH: ''
+      GITHUB_TOKEN: ''
+      GH_TOKEN: ''
+      NPM_TOKEN: ''
+      NODE_AUTH_TOKEN: ''
+      NPM_CONFIG_USERCONFIG: /dev/null
+      NPM_CONFIG_IGNORE_SCRIPTS: 'true'
+      ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+    steps:
+      # No checkout: no git credential is ever installed for the source to read.
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+          token: ''
+      - name: Fetch only exact hash-pinned acceptance helpers anonymously
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import {createHash} from 'node:crypto';
+          import {mkdir,writeFile} from 'node:fs/promises';
+          const commit=process.env.SFS_ACCEPTANCE_WORKFLOW_SHA;
+          if(!/^[0-9a-f]{40}$/.test(commit??''))throw Error('INVALID_WORKFLOW_COMMIT');
+          const files={
+            'public-updater-source.mjs':'21ef39813f1061673da8a8539322a89a5b6b608a1b9f4e6214c1f78d9925b662',
+            'public-updater-acceptance.mjs':'8611a96c961620d66f488545becb5677bae5adf54a49591e7ba7f9563bdfb77b',
+            'public-updater-extract.py':'f2520b140bc1f6f0376c436c9f58c20f956c18c55af7646831a82df903100dbe'
+          };
+          await mkdir('tools');
+          for(const [name,expected] of Object.entries(files)){
+            const url='https://raw.githubusercontent.com/Rigby453/steam-float-scanner-releases/'+commit+'/tools/'+name;
+            const r=await fetch(url,{redirect:'error',credentials:'omit',signal:AbortSignal.timeout(30000)});
+            if(r.status!==200||!r.body)throw Error('HELPER_DOWNLOAD_FAILED');
+            const chunks=[];let count=0;
+            for await(const chunk of r.body){count+=chunk.length;if(count>128*1024)throw Error('HELPER_SIZE_LIMIT');chunks.push(chunk);}
+            const bytes=Buffer.concat(chunks);
+            if(createHash('sha256').update(bytes).digest('hex')!==expected)throw Error('HELPER_HASH_MISMATCH');
+            await writeFile('tools/'+name,bytes,{flag:'wx'});
+          }
+          console.log('Exact acceptance helpers verified; no credential or source code was executed.');
+          NODE
+      - name: Require published immutable1.0.1 and verify native proof plus public source ZIP
+        timeout-minutes: 3
+        run: node tools/public-updater-source.mjs
+      - name: Validate and extract the already hash-verified source using Python builtins
+        run: python tools/public-updater-extract.py
+      - name: Restore only locked dependencies without package lifecycle scripts
+        working-directory: public-acceptance-work/source
+        timeout-minutes: 4
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Execute actual public production updater checks and full verified download
+        working-directory: public-acceptance-work/source
+        timeout-minutes: 9
+        run: node --import ./node_modules/tsx/dist/loader.mjs ../../tools/public-updater-acceptance.mjs
+      - name: Upload only bounded safe JSON evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: public-updater-source-client-1.0.1-${{ github.run_id }}
+          path: public-acceptance-evidence/*.json
+          if-no-files-found: warn
+          retention-days: 14
