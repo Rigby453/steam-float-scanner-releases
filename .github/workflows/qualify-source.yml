@@ -89,6 +89,14 @@ jobs:
       - name: Build one native installer and verify its complete payload
         working-directory: source
         run: npm run package:windows
+      - name: Native packaged purchase recognition and receipt safeguards
+        working-directory: source
+        shell: pwsh
+        env:
+          ELECTRON_RUN_AS_NODE: '1'
+        run: |
+          & '.\release\win-unpacked\Steam Float Scanner.exe' tools/release-acceptance/packaged-financial.mjs --root . --output release/financial-acceptance.json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - uses: actions/upload-artifact@v4
         if: success()
         with:
