@@ -1,0 +1,103 @@
+name: Qualify exact Scanner source snapshot
+on:
+  workflow_dispatch:
+    inputs:
+      release_id:
+        required: true
+        type: string
+      version:
+        required: true
+        type: string
+      source_commit:
+        required: true
+        type: string
+      zip_asset_id:
+        required: true
+        type: string
+      zip_sha256:
+        required: true
+        type: string
+      pack_asset_id:
+        required: true
+        type: string
+      pack_sha256:
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: scanner-native-qualification
+  cancel-in-progress: false
+jobs:
+  windows:
+    if: github.repository == 'Rigby453/steam-float-scanner-releases' && github.ref == 'refs/heads/main'
+    runs-on: windows-latest
+    timeout-minutes: 55
+    permissions:
+      contents: write
+    env:
+      SFS_NETWORK_DISABLED: '1'
+      SFS_RELEASE_ID: ${{ inputs.release_id }}
+      SFS_VERSION: ${{ inputs.version }}
+      SFS_SOURCE_COMMIT: ${{ inputs.source_commit }}
+      SFS_ZIP_ASSET_ID: ${{ inputs.zip_asset_id }}
+      SFS_ZIP_SHA256: ${{ inputs.zip_sha256 }}
+      SFS_PACK_ASSET_ID: ${{ inputs.pack_asset_id }}
+      SFS_PACK_SHA256: ${{ inputs.pack_sha256 }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+          sparse-checkout: tools
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Download only the pinned new draft snapshot
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node tools/prepare-source-snapshot.mjs download
+      - name: Restore exact credential-free source commit
+        shell: pwsh
+        run: |
+          Expand-Archive -LiteralPath snapshot-input/source.zip -DestinationPath source
+          node tools/prepare-source-snapshot.mjs restore-git
+      - name: Canonical isolated Windows temporary directory
+        shell: pwsh
+        run: |
+          node --input-type=module -e "import{mkdirSync,realpathSync,appendFileSync}from'node:fs';import{join}from'node:path';const p=join(process.env.RUNNER_TEMP,'sfs-ci-canonical');mkdirSync(p,{recursive:true});const r=realpathSync.native(p);appendFileSync(process.env.GITHUB_ENV,'TEMP='+r+'\nTMP='+r+'\n');"
+      - name: Restore locked dependencies
+        working-directory: source
+        run: npm ci --ignore-scripts
+      - name: Prepare checksum-verified Electron runtime
+        working-directory: source
+        run: node node_modules/electron/install.js
+      - name: Strict source check and complete build
+        working-directory: source
+        run: npm run build
+      - name: Root source suite
+        working-directory: source
+        run: npx vitest run --maxWorkers=1
+      - name: Engine source suite
+        working-directory: source
+        run: npm run test --workspace @sfs/engine -- --maxWorkers=1
+      - name: Desktop source suite
+        working-directory: source
+        run: npm run test --workspace @sfs/desktop -- --maxWorkers=1
+      - name: Provenance regression checks
+        working-directory: source
+        run: node --test tests/packaging/build-provenance.test.mjs
+      - name: Build one native installer and verify its complete payload
+        working-directory: source
+        run: npm run package:windows
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: native-package-Windows-${{ inputs.source_commit }}
+          if-no-files-found: error
+          path: source/release/
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: failed-qualification-${{ inputs.source_commit }}
+          if-no-files-found: ignore
+          path: source/release/*smoke*.json
