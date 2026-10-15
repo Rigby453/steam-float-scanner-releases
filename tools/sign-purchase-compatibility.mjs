@@ -338,12 +338,12 @@ export async function run(mode, env = process.env, fetcher = fetch, testOptions 
     && digest(await client.asset(archived)) === inputs.previousSha256, 'FINAL_API_READBACK_MISMATCH');
   parseSigned(await client.asset(promoted), publicKey);
   let publicReadback = false;
-  for (let attempt = 0; attempt < 12; attempt++) {
+  for (let attempt = 0; attempt < 48; attempt++) {
     try {
       const publicBytes = await client.publicAsset('compatibility.json');
       if (digest(publicBytes) === digest(bytes)) { parseSigned(publicBytes, publicKey); publicReadback = true; break; }
     } catch { /* CDN visibility can lag; only repeat anonymous reads. */ }
-    if (attempt < 11) await (testOptions.delay ?? delay)(5000);
+    if (attempt < 47) await (testOptions.delay ?? delay)(5000);
   }
   requireThat(publicReadback, 'FINAL_PUBLIC_READBACK_MISMATCH');
   await requireControlUnchanged(client, snapshot);

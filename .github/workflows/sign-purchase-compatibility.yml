@@ -69,7 +69,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          printf '%s\n' 'ac20ec6e6c4c3e84e264e88fea3d0cd92ab89fa473662fed6a506dafbe8d730f  tools/sign-purchase-compatibility.mjs' | sha256sum --check --strict
+          printf '%s\n' '2f7a327ba52ffdcef238c68d75b971f2dee5d17e1d09823703946e3f6019f223  tools/sign-purchase-compatibility.mjs' | sha256sum --check --strict
           node --test tools/sign-purchase-compatibility.test.mjs
       - name: Verify exact payload, external review, existing signature and unchanged installer latest
         env:
@@ -100,5 +100,5 @@ jobs:
           SFS_UPDATE_KEY_PASSPHRASE: ${{ secrets.SFS_UPDATE_KEY_PASSPHRASE }}
         run: |
           set -euo pipefail
-          printf '%s\n' 'ac20ec6e6c4c3e84e264e88fea3d0cd92ab89fa473662fed6a506dafbe8d730f  tools/sign-purchase-compatibility.mjs' | sha256sum --check --strict
+          printf '%s\n' '2f7a327ba52ffdcef238c68d75b971f2dee5d17e1d09823703946e3f6019f223  tools/sign-purchase-compatibility.mjs' | sha256sum --check --strict
           node tools/sign-purchase-compatibility.mjs publish

@@ -1,95 +1,48 @@
 # Steam Float Scanner releases
 
-Current release: **0.2.150**.
-[Installer and all eleven verified assets](https://github.com/Rigby453/steam-float-scanner-releases/releases/tag/v0.2.150).
+Current Windows release: **1.0.1**, published and immutable.
+[Installer and seven assets](https://github.com/Rigby453/steam-float-scanner-releases/releases/tag/v1.0.1).
+[Exact source tag](https://github.com/parserst/steam-float-scanner/tree/v1.0.1):
+`8afd1b0c4c88f4cf1046647283ce63110fe3a1af`.
 
-Windows EXE: 112112013 bytes, SHA256
-`3f9a0788303640c2570436fdcaf8094172a83df67f0de5fbea384399af7e6561`.
-Linux DEB: 106331284 bytes, SHA256
-`7ad4b888c9911d28267ebc98f91061b07a7b2d330baaddb52876d53ab80385c6`.
+EXE: **116516861 bytes**, SHA-256
+`b73703b6f2afb06c01494b3a7a920646e4ce9298420aced83237c4fccbef805c`.
+The existing Ed25519 update trust key is unchanged.
 
-[Exact source tag](https://github.com/parserst/steam-float-scanner/tree/v0.2.150)
-identifies build commit `1d85315cc096b9aa343764d27d9f0adb58a2f2c3`.
-Native Windows/Ubuntu CI passed source suites and package verification.
-[Signing and publication](https://github.com/Rigby453/steam-float-scanner-releases/actions/runs/37916817523)
-verified all eleven public assets before latest promotion. The existing Ed25519
-trust key is retained; the new release is immutable. Independent Windows/Linux
-checks composing the actual150 production transport and service report
-149→AVAILABLE150 and150→UP_TO_DATE. The earlier149 check omitted the transport
-wrapper and missed its GitHub redirect rejection. Installed149 needs one manual
-upgrade to150. This release also extends bounded database preparation time and
-stops repeated startup timeouts; command and financial deadlines are unchanged.
+This consolidates qualified Reader/parser/Seen, exact-purchase/receipt,
+DIRECT/proxy and SFS account improvements. Same-device recovery authenticates
+the retained personal code for the same owner and preserves backup encryption.
+The OWNER build keeps undeployed payment and browser-control services disabled.
+The public updater now bounds headers, body inactivity and total transfer
+separately instead of aborting a progressing download after300 seconds.
+An old installed159 client retains its old timeout: one manual transition
+using this installer may be necessary on a slow connection.
 
-[Automated signing instructions](SIGNING.md) let an authorized Cloud dispatcher
-publish through GitHub Actions without receiving the signing key. The old
-encrypted PEM and passphrase are Environment Secrets restricted to main;
-trusted signer bytes are pinned by the workflow. Secret values are never in Git.
-A Cloud caller still needs repository access and Actions dispatch permission.
+- [Native Windows qualification](https://github.com/Rigby453/steam-float-scanner-releases/actions/runs/38789078465): **7752 PASS, one platform skip**; types, build, payload and Reader smokes passed. Exact native files were independently hash-checked. A separate local native financial check passed14 profiles,56 role and56 tamper checks; the CI financial output/wait gap was corrected for future runs.
+- [Protected signing/publication](https://github.com/Rigby453/steam-float-scanner-releases/actions/runs/38792582499): original key, seven verified assets, immutable latest1.0.1.
+- [Unprivileged public updater acceptance](https://github.com/Rigby453/steam-float-scanner-releases/actions/runs/38792811462): actual1.0.1 production service/transport downloaded all116516861 bytes anonymously, checked the signature and independent SHA-256, and repeated local verification. Version parameters152/159 offer1.0.1;1.0.1 reports UP_TO_DATE. This executes1.0.1 source, not the old installed152/159 binaries.
+- The actual native1.0.1 Settings update button passed against the public channel in a fresh stopped profile. Isolated EngineRuntime AUTO_BUY ARM/START, one synthetic exact purchase, receipt, FULL storage and Stop passed. Owner installation, owner login, live purchases and live speed acceptance were not performed.
 
-GUI baseline price/proxy-order/layout failures remain unresolved; package
-proof does not establish a clean full GUI suite. Owner-profile installation,
-live AUTO_BUY/Steam and Seattle deployment are separate checks. In particular,
-150's installer does not itself change Steam compatibility. The separately
-reviewed and signed revision2026100901 is now published in the existing
-purchase-compatibility-v1 channel. It preserves all eleven older deployments,
-their expiry and the existing verification guard. Fresh production verification
-passed; the owner's Seattle150 Start reached RUNNING at2026-10-09T10:42:47.992Z.
-This demonstrates startup and contract acceptance, not a completed purchase.
+The separate `purchase-compatibility-v1` prerelease channel contains signed
+revision**2026101503**:13 preserved legacy deployments plus three reviewed
+exact111-module snapshots, no automatic graph policies, original expiry
+**2026-11-04T20:12:56.038Z**. Fresh native production verification passed.
+Unknown deployments continue to block. The protected1503 job published the
+asset but failed its final anonymous readback window; subsequent independent
+public signature/payload readback and the native production gate passed.
+Future readback polling was extended without repeating publication mutations;
+91 mock tests and independent review passed. That future polling window has
+not been exercised in another protected signing run.
 
-## Previous release history
+[Signing instructions](SIGNING.md),
+[public updater acceptance scope](PUBLIC_UPDATER_ACCEPTANCE.md),
+[private source acceptance and archive register](https://github.com/parserst/steam-float-scanner/blob/main/docs/reports/2026-10/1.0.1.md).
+Existing protected Environment Secrets remain restricted to main. Signing keys,
+owner profiles, sessions, cookies and proxy credentials never belong in Git.
 
-# Steam Float Scanner Windows releases
-
-Current release: **0.2.145**.
-[Installer and verified assets](https://github.com/Rigby453/steam-float-scanner-releases/releases/tag/v0.2.145).
-
-Adds bounded core statistics, read-only reports, authoritative Seen snapshots
-and reduced snapshot-validation cost. Includes the owner's public compatibility
-metadata and Start-safe proxy cleanup corrections, all reading/purchase/Guard/
-maintenance work from144 and the143 startup fix. Previous release bytes and
-source tags are preserved.
-
-EXE: `Steam-Float-Scanner-Setup-0.2.145.exe`, **112975717 bytes**. SHA-256:
-`c417110a5f8fc837499230e75f5a91cb7d653f915c9c728aafd50760c92c6650`.
-
-Source: [v0.2.145](https://github.com/parserst/steam-float-scanner/tree/v0.2.145).
-[Release acceptance](https://github.com/parserst/steam-float-scanner/blob/main/docs/RELEASE_0_2_145.md)
-separates source, native offline, package, signature, updater, download and live
-proof. Source components accept4906 tests/383 files; six packaged smokes,
-197-file NSIS payload, three isolated native cases, the existing Ed25519 trust
-key and all seven anonymous full downloads pass. The production public updater
-144→145 downloads identical bytes and145 reports UP_TO_DATE.
-
-The recent-observation cache has constant-time overflow eviction after its
-20,000-key bound; report reads cannot enter the financial writer's queue.
-Current Seen membership stays at20,000 entries independently of financial
-claims/history. Local actual-SQLite component CPU comparisons improve, while
-complete read and fake-purchase tails vary. A stable full-engine gain, live
-Steam purchase latency and an installed overnight scan are not established.
-Earlier injected-client/mock-persistence measurements retain their limits.
-
-- Render20/100, AUTO/RU/EN, exact purchase identity/money/session, durable send
-  fences, Stop and receipt verification remain enforced.
-- Guard overlaps one optional exact observation with an already sent BUY;
-  ACCEPT requires the exact current token and durable fence.
-- Future updater cleanup requires initialized new-version storage; current/
-  pending installers and reports remain. Build checks remove only their own
-  temporary extraction after durable reports.
-- Older completed database snapshots become verified streaming archives,
-  keeping the latest five and current recovery raw. Errors retain originals;
-  archives are never auto-deleted. The bundled restore command writes a new file.
-
-The source Git remains private; exact source ZIP and Windows assets are public
-under the owner's choice. Publication does not install, change an owner profile,
-clean existing owner files, send real BUY/ACCEPT or deploy a server. No separate
-server repository was identified. Historical
-[0.2.144](https://github.com/Rigby453/steam-float-scanner-releases/releases/tag/v0.2.144),
-[0.2.143](https://github.com/Rigby453/steam-float-scanner-releases/releases/tag/v0.2.143)
-and earlier releases remain immutable. Installed142 and later use this public
-signed channel; older141 needs a manual first transition because its protected
-updater Edge was not deployed.
-
-## Automated signing
-
-[Cloud signing and publication instructions](SIGNING.md). The trusted existing
-key is held in protected GitHub Environment Secrets; never add it to Git or chat.
+Earlier immutable releases and source tags remain historical, including
+[1.0.0](https://github.com/Rigby453/steam-float-scanner-releases/releases/tag/v1.0.0),
+[0.2.152](https://github.com/Rigby453/steam-float-scanner-releases/releases/tag/v0.2.152)
+and [0.2.150](https://github.com/Rigby453/steam-float-scanner-releases/releases/tag/v0.2.150).
+Historical GUI price/proxy-order/layout findings are not closed by package
+smokes; their prior acceptance limits remain in source reports and Git history.

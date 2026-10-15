@@ -378,6 +378,15 @@ test('stale canonical CDN redirects trigger only bounded public reads after one 
   assert.deepEqual(failure.mutations().map(x => x.method), ['POST', 'POST', 'PATCH', 'PATCH']);
 });
 
+test('an eventually visible CDN asset after thirty stale reads does not repeat any publication mutation', async () => {
+  const f = fixture(), r = remote(f, { staleFinal: 30 });
+  let waits = 0;
+  const result = await run('publish', f.env, r.fetcher, { ...testOptions, delay: async milliseconds => { assert.equal(milliseconds, 5000); waits++; } });
+  assert.equal(result.status, 'PUBLISHED_SIGNATURE_AND_PUBLIC_READBACK_VERIFIED');
+  assert.equal(waits, 30);
+  assert.deepEqual(r.mutations().map(x => x.method), ['POST', 'POST', 'PATCH', 'PATCH']);
+});
+
 test('client rejects arbitrary mutations and redirects to untrusted or authenticated origins', async t => {
   const calls = []; const noFetch = async (...args) => { calls.push(args); assert.fail('forbidden call reached fetch'); };
   const client = createClient('mock-token', noFetch);
