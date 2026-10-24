@@ -1,48 +1,52 @@
 # Steam Float Scanner releases
 
-Current Windows release: **1.0.1**, published and immutable.
-[Installer and seven assets](https://github.com/Rigby453/steam-float-scanner-releases/releases/tag/v1.0.1).
-[Exact source tag](https://github.com/parserst/steam-float-scanner/tree/v1.0.1):
-`8afd1b0c4c88f4cf1046647283ce63110fe3a1af`.
+Current Windows release: **1.1.1**, published and immutable.
+[Installer and seven assets](https://github.com/Rigby453/steam-float-scanner-releases/releases/tag/v1.1.1).
+[Exact source tag](https://github.com/parserst/steam-float-scanner/tree/v1.1.1):
+`ffee149548335ef59f8da9aa493975accb40132d`.
 
-EXE: **116516861 bytes**, SHA-256
-`b73703b6f2afb06c01494b3a7a920646e4ce9298420aced83237c4fccbef805c`.
+EXE: **116995340 bytes**, SHA-256
+`eb49f249bfffdfd78bc5dd953375f9096876e65927033492edfe46af80413c91`.
 The existing Ed25519 update trust key is unchanged.
 
-This consolidates qualified Reader/parser/Seen, exact-purchase/receipt,
-DIRECT/proxy and SFS account improvements. Same-device recovery authenticates
-the retained personal code for the same owner and preserves backup encryption.
-The OWNER build keeps undeployed payment and browser-control services disabled.
-The public updater now bounds headers, body inactivity and total transfer
-separately instead of aborting a progressing download after300 seconds.
-An old installed159 client retains its old timeout: one manual transition
-using this installer may be necessary on a slow connection.
+The unified scanner includes CPU/RAM load profiles, native charm search and
+exact AUTO_BUY, explicitly enabled common-list/applied-sticker purchases,
+bounded Recent RU/US discovery and valid-row processing in partial replies.
+Existing exact listing/asset/account/price rules, Guard, Stop, durable reserves,
+ambiguous-send holds and receipt reconciliation remain. NODE remains the default
+transport; GO is an explicit read-only experiment. New channels do not establish
+complete market coverage or a universal live speed improvement.
 
-- [Native Windows qualification](https://github.com/Rigby453/steam-float-scanner-releases/actions/runs/38789078465): **7752 PASS, one platform skip**; types, build, payload and Reader smokes passed. Exact native files were independently hash-checked. A separate local native financial check passed14 profiles,56 role and56 tamper checks; the CI financial output/wait gap was corrected for future runs.
-- [Protected signing/publication](https://github.com/Rigby453/steam-float-scanner-releases/actions/runs/38792582499): original key, seven verified assets, immutable latest1.0.1.
-- [Unprivileged public updater acceptance](https://github.com/Rigby453/steam-float-scanner-releases/actions/runs/38792811462): actual1.0.1 production service/transport downloaded all116516861 bytes anonymously, checked the signature and independent SHA-256, and repeated local verification. Version parameters152/159 offer1.0.1;1.0.1 reports UP_TO_DATE. This executes1.0.1 source, not the old installed152/159 binaries.
-- The actual native1.0.1 Settings update button passed against the public channel in a fresh stopped profile. Isolated EngineRuntime AUTO_BUY ARM/START, one synthetic exact purchase, receipt, FULL storage and Stop passed. Owner installation, owner login, live purchases and live speed acceptance were not performed.
+- Local Windows integration suites: **8882 PASS, 10 skipped** before the isolated compatibility correction; **108 focused checks and strict types PASS** after it. Native packaging passed all eight smokes, 42 first-party build files and 213 payload files. The actual packaged financial harness passed 14 profiles, 56 role checks and 56 tamper checks, including pending-receipt and late-Stop blocks, with zero external requests or purchases.
+- [Protected signing/publication40126108139](https://github.com/Rigby453/steam-float-scanner-releases/actions/runs/40126108139): SUCCESS, original key, all seven public assets verified, immutable latest1.1.1.
+- [Independent public updater acceptance](https://github.com/parserst/steam-float-scanner/blob/main/docs/verification/unified-20261024/public-update-1.1.1.json): actual production service/transport verified the signature, downloaded the complete EXE and checked its SHA-256. Version parameters0.2.159/1.0.1/1.0.9 offer1.1.1;1.1.1 returns UP_TO_DATE. This verifies the current service, not the old installed binaries or a newly exercised GUI button.
+- Source GitHub CI40125682175 did not start because of account billing/spending limits. Local qualification and protected release signing are separate successful evidence; the unavailable source CI is not described as a test pass.
+- The source ZIP matches all2072 native build inputs: exact tagged source plus nine generated public cabinet files. [Source/package/release report](https://github.com/parserst/steam-float-scanner/blob/main/docs/reports/2026-10/1.1.1.md).
 
-The separate `purchase-compatibility-v1` prerelease channel contains signed
-revision**2026101503**:13 preserved legacy deployments plus three reviewed
-exact111-module snapshots, no automatic graph policies, original expiry
-**2026-11-04T20:12:56.038Z**. Fresh native production verification passed.
-Unknown deployments continue to block. The protected1503 job published the
-asset but failed its final anonymous readback window; subsequent independent
-public signature/payload readback and the native production gate passed.
-Future readback polling was extended without repeating publication mutations;
-91 mock tests and independent review passed. That future polling window has
-not been exercised in another protected signing run.
+The mutable `purchase-compatibility-v1` channel now also serves signed
+`protocol.json`, revision **2026102401**, valid through
+**2026-11-23T19:34:02.707Z**. The current client automatically reuses approval
+when its exact reviewed financial chain is unchanged across app-version or
+unrelated scanner/UI edits. Changed chains, bad signatures, expiry and rollback
+remain blocked. The public production gate passed current/equivalent-version
+admission and changed-chain refusal with **zero Steam requests and purchases**.
+Paid compatibility tests are not required for an unchanged chain. Historical
+Steam UI compatibility metadata remains separate and is preserved.
+
+Seattle readonly verification found installed1.0.1 and available1.1.1 with the
+same public installer hash. No server installation, owner-profile start, login
+or real purchase was performed. Historical GUI findings and new charm/common-list
+live purchase acceptance are not closed by source or package tests.
 
 [Signing instructions](SIGNING.md),
 [public updater acceptance scope](PUBLIC_UPDATER_ACCEPTANCE.md),
-[private source acceptance and archive register](https://github.com/parserst/steam-float-scanner/blob/main/docs/reports/2026-10/1.0.1.md).
-Existing protected Environment Secrets remain restricted to main. Signing keys,
-owner profiles, sessions, cookies and proxy credentials never belong in Git.
+[source acceptance and archive register](https://github.com/parserst/steam-float-scanner/blob/main/docs/reports/2026-10/1.1.1.md).
+Protected Environment Secrets remain restricted to main. Signing keys, owner
+profiles, sessions, cookies and proxy credentials never belong in Git.
 
 Earlier immutable releases and source tags remain historical, including
-[1.0.0](https://github.com/Rigby453/steam-float-scanner-releases/releases/tag/v1.0.0),
-[0.2.152](https://github.com/Rigby453/steam-float-scanner-releases/releases/tag/v0.2.152)
+[1.0.1](https://github.com/Rigby453/steam-float-scanner-releases/releases/tag/v1.0.1),
+[1.0.0](https://github.com/Rigby453/steam-float-scanner-releases/releases/tag/v1.0.0)
 and [0.2.150](https://github.com/Rigby453/steam-float-scanner-releases/releases/tag/v0.2.150).
-Historical GUI price/proxy-order/layout findings are not closed by package
-smokes; their prior acceptance limits remain in source reports and Git history.
+An old installed159 client retains its old300s progressing-download timeout;
+one manual transition may be necessary on a slow connection.
