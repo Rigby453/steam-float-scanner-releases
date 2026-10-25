@@ -1,11 +1,11 @@
 # Steam Float Scanner releases
 
-Current immutable Windows release: **1.1.2**. [Installer](https://github.com/Rigby453/steam-float-scanner-releases/releases/tag/v1.1.2), [exact source](https://github.com/parserst/steam-float-scanner/tree/v1.1.2), [verification](https://github.com/parserst/steam-float-scanner/blob/main/docs/reports/2026-10/1.1.2.md).
+Current immutable Windows release: **1.1.3**. [Installer](https://github.com/Rigby453/steam-float-scanner-releases/releases/tag/v1.1.3), [exact source](https://github.com/parserst/steam-float-scanner/tree/v1.1.3), [verification](https://github.com/parserst/steam-float-scanner/blob/main/docs/reports/2026-10/1.1.3.md).
 
-Commit `71b99455216b5b717f3f0a7eb2aa3d49d927c085`. EXE SHA-256: `75d559780a5afc7cf69f68801b393d930f94ea89ad519957c7f56f6d0f62da8a`.
+Commit `500aa27490dd82df84a725338f115334bc380c76`. EXE SHA-256: `4672096f6e619179bb4e4bd6eec4604456b7f11a177508ab34d095ffcf969518`.
 
-Standalone Recent matches selected saved skin rules and checks exact Float, seed and price through a shared scanner proxy pool. Country/bulk proxy controls remain available when Steam analytics cannot load. Existing unified scanner functionality is retained. Recent is a small window and is not complete market coverage.
+Recent-only now follows one verified same-Steam exact-detail redirect to the listing group proved by the shared feed. A route that temporarily fails enters bounded recovery, and successful Recent reads clear the outage alert. Exact listing, asset, currency, price, Float and purchase safeguards remain. Recent is a small window and is not complete market coverage.
 
-8890 local tests PASS / 10 skipped; strict types, browser fixtures, native packaging and complete public updater verification PASS. [Protected original-key signing](https://github.com/Rigby453/steam-float-scanner-releases/actions/runs/40132115932) succeeded. Source CI availability is recorded separately. The reviewed signed purchase policy supports this chain and equivalent versions without paid compatibility tests; unchanged exact purchase/receipt safeguards remain.
+Strict types, 66 focused transport/pool tests, 117 alert tests, 35 critical purchase tests, native packaging, eight packaged smokes and the actual packaged financial harness passed. Broad source suites had a stale generated worker and a load-sensitive timeout; their affected tests passed on focused recheck. Source CI ran zero steps and is not counted as a pass. [Protected original-key signing and full public download verification](https://github.com/Rigby453/steam-float-scanner-releases/actions/runs/40172897486) passed. The production updater offers 1.1.3 from 1.1.2 with the matching signature and hash.
 
-No server installation, profile start or real purchases were performed during this release. Previous releases and compatibility metadata remain available. Linux historical artifacts are preserved; this release qualifies Windows x64.
+No Seattle installation, owner-profile start, live Steam read or real purchase was performed during this release. Previous releases and compatibility metadata remain available. Linux historical artifacts are preserved; this release qualifies Windows x64.
