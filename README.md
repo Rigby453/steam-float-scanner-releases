@@ -1,13 +1,13 @@
 # Steam Float Scanner releases
 
-Current immutable Windows release: **1.1.4**. [Installer](https://github.com/Rigby453/steam-float-scanner-releases/releases/tag/v1.1.4), [exact source](https://github.com/parserst/steam-float-scanner/tree/v1.1.4), [verification](https://github.com/parserst/steam-float-scanner/blob/main/docs/reports/2026-10/1.1.4.md).
+Current immutable Windows release: **1.1.14**. [Installer](https://github.com/Rigby453/steam-float-scanner-releases/releases/tag/v1.1.14), [exact source](https://github.com/parserst/steam-float-scanner/tree/v1.1.14), [verification](https://github.com/parserst/steam-float-scanner/blob/main/docs/reports/2026-10/integrated-parser-2026-10-26.md).
 
-Source commit: f1c5698c561de79228d1ba49186165f95645d884. Installer SHA-256: 90889e00cb998b71b3605d1257fb398bc9c2f8790811bc84d72385e55e103058.
+Source commit: bc01d188efcda9215e06cd308f5982aa6a233cc2. Installer SHA-256: 473c9502c44865213db57c109ef6161c6c0cdb66a43501bff800232b4128b87d.
 
-This version combines selectable Recent countries and independent read admission, immutable detail-read retries, sales and fresh-price analytics, bounded CSFloat cursor coverage and opt-in SteamApis/Skinport observation windows. Research coverage results do not establish earlier listing publication or complete market coverage.
+Recent dispatch freshness, preserved unsent hints, direct group detail, bounded redirect draining and two independent exact lots remove verified internal waits. Eleven completed live comparisons removed one GET. Seller publication latency, full market coverage and faster real BUY remain unproved.
 
-Signed purchase protocol revision2026102501 admits the reviewed1.1.4 implementation, preserves previous approvals and expiry, and rejects an altered implementation or rollback. The actual production gate passed without Steam requests or purchases. Existing exact-listing, account, budget, Guard, Stop and receipt safeguards remain.
+9296 unique source tests passed and one platform-specific case skipped; one initial root timeout passed on an isolated retry. Seven native Go tests, strict types, current signed financial protocol, native215/44/eight smokes and financial14/56/56 passed. Source CI executed0steps due account billing and is not a test pass.
 
-9211 source/node/research tests passed,10 were skipped; strict types,213-file native payload parity, eight packaged smokes and14/56/56 packaged financial checks passed. [Protected original-key signing/publication](https://github.com/Rigby453/steam-float-scanner-releases/actions/runs/40206071215) passed. The real1.1.3 update button downloaded and verified all117074056 installer bytes and offered Install and restart. The production updater offers1.1.4 from1.1.3 and reports1.1.4 up to date. Source CI executed zero steps because of account billing limits and is not counted as a test pass.
+[Protected original-key signing/publication](https://github.com/Rigby453/steam-float-scanner-releases/actions/runs/40415108358) passed. The production UpdateService anonymously downloaded all121576206 bytes and verified the signature/hash, offering1.1.14 from1.1.4 and1.1.13 and reporting1.1.14 up to date. This was not an old installed GUI button test. Update metadata is signed; the EXE is not Authenticode-signed.
 
-Seattle read-only verification sees installed1.1.3, available1.1.4 and the new protocol. Installation and application Start remain the owner's actions. No owner-profile change or real purchase was performed. Historical releases and compatibility metadata are preserved; this release qualifies Windows x64.
+Installation and Start remain owner actions. No real BUY/SELL occurred. Existing identity, price, Float, original TTL, durable reserve, duplicate, ambiguity and Stop protections remain. Historical releases and compatibility metadata are preserved.
