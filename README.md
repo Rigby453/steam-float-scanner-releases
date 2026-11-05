@@ -1,5 +1,15 @@
 # Steam Float Scanner releases
 
+Current verified Windows x64 release: **1.2.13**. [Installer and signed update](https://github.com/Rigby453/steam-float-scanner-releases/releases/tag/v1.2.13). Exact packaged source: `v1.2.13 / e599e8ea396c7ceb22cf7ada95a88186e01b1aab`.
+
+Integrated Analytics, skin bases, price checks and grouped HTML/JSON selection. Saves 10,000 conditions; explicitly starts up to 5,000 per run. Actual packaged financial hash is admitted by original-key signed policy 2026110502 (expiry unchanged). Owner installation and real purchases were not performed.
+
+[Full source, check registry and limitations](https://github.com/parserst/steam-float-scanner/blob/main/docs/reports/2026-11/combined-1.2.13-2026-11-05.md).
+
+## Previous release documentation
+
+# Steam Float Scanner releases
+
 Current immutable Windows release: **1.2.4**. [Installer](https://github.com/Rigby453/steam-float-scanner-releases/releases/tag/v1.2.4), [exact source](https://github.com/parserst/steam-float-scanner/tree/v1.2.4), [single report, all checks and CI limits](https://github.com/parserst/steam-float-scanner/blob/a7501f747abe6192ecbfe068817ab3d636ad3e27/docs/reports/2026-11/analytics-requests-timeouts-2026-11-01.md).
 
 Fixes the1.2.0 interval identity-query whole-run scan, lets durable catalogue items start before a slow later page, removes unrelated HTML endpoint waits from JSON analytics and restores explicit Continue after storage timeout. Four existing-index searches retain every conflicting identity check; no schema migration, data deletion or automatic unknown-write replay.
