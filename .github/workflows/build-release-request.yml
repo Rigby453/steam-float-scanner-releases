@@ -101,6 +101,20 @@ jobs:
           path: ${{ runner.temp }}/scanner-release-bundle/
           if-no-files-found: error
           retention-days: 7
+      - name: Retain exact candidate files for review after a failed qualification
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: scanner-retained-candidate-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/scanner-source/release/Steam-Float-Scanner-Setup-1.2.14.exe
+            ${{ runner.temp }}/scanner-source/release/Steam-Float-Scanner-Setup-1.2.14.exe.blockmap
+            ${{ runner.temp }}/scanner-source/release/latest.yml
+            ${{ runner.temp }}/scanner-source/release/build-verification.json
+            ${{ runner.temp }}/scanner-source/release/financial-acceptance.json
+            ${{ runner.temp }}/scanner-source/release/purchase-readiness.json
+          if-no-files-found: ignore
+          retention-days: 7
 
   stage:
     needs: windows

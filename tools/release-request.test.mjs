@@ -117,3 +117,22 @@ test('workflow leaves key-bearing signer separate and gives write token only to 
   assert.equal(workflow.split(helperDigest).length - 1, 3, 'Every helper pin must match the exact reviewed bytes');
   assert.equal(sha(readFileSync(new URL('./sign-release.mjs', import.meta.url))), '12088d415fc8553ee0a7491d1457813c2c42204121ca1f20b5a9d866b532c38a');
 });
+
+test('failed qualification retains only named candidate bytes and never supplies staging', () => {
+  const publishedWorkflow = new URL('../.github/workflows/build-release-request.yml', import.meta.url);
+  const workflow = readFileSync(existsSync(publishedWorkflow) ? publishedWorkflow : new URL('./build-release-request.yml', import.meta.url), 'utf8');
+  const retained = workflow.split('      - name: Retain exact candidate files for review after a failed qualification\n')[1]?.split('\n  stage:')[0];
+  assert(retained, 'Failure retention step must exist in the Windows job');
+  assert.match(retained, /        if: failure\(\)/);
+  assert.match(retained, /uses: actions\/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02/);
+  assert.match(retained, /name: scanner-retained-candidate-\$\{\{ github\.run_id \}\}/);
+  const paths = retained.split('\n').filter(line => line.startsWith('            ')).map(line => line.trim());
+  const prefix = '${{ runner.temp }}/scanner-source/release/';
+  assert.deepEqual(paths, ['Steam-Float-Scanner-Setup-1.2.14.exe', 'Steam-Float-Scanner-Setup-1.2.14.exe.blockmap', 'latest.yml', 'build-verification.json', 'financial-acceptance.json', 'purchase-readiness.json'].map(name => prefix + name));
+  assert.match(retained, /if-no-files-found: ignore/); assert.match(retained, /retention-days: 7/);
+  assert.doesNotMatch(retained, /continue-on-error|run:/);
+  const stage = workflow.split('\n  stage:')[1];
+  assert.match(stage, /needs: windows/);
+  assert.match(stage, /name: scanner-native-request-\$\{\{ github\.run_id \}\}/);
+  assert.doesNotMatch(stage, /scanner-retained-candidate/);
+});

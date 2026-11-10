@@ -137,8 +137,17 @@ fields and native source identity. Its old build-verification JSON lacks the
 new `purchaseImplementation` field. Do not manufacture that field: the new
 1.2.14 package verifier must emit and verify it from the actual ASAR.
 
-Failures preserve the draft/artifacts for inspection and do not overwrite,
-delete, automatically resume, change latest or rebuild an immutable version.
+After a failed Windows qualification, a separate pinned upload step retains
+only the six explicitly named installer/blockmap/feed/build-proof/financial-proof/
+readiness files that exist, for seven days, as
+`scanner-retained-candidate-<run ID>`. It never uploads the whole release folder,
+profile, source or raw logs. Partial files remain unqualified candidates, not
+PASS evidence. The Windows job still fails and staging cannot consume this
+retained artifact; only the normal fully checked bundle can reach staging.
+
+Existing draft/assets and these bounded candidate artifacts are preserved for
+inspection; failures do not overwrite, delete, automatically resume, change
+latest or rebuild an immutable version.
 If staging fails after creating a draft, root must inspect the precise state
 and deliberately plan recovery with the exact retained bytes. A new login,
 old workflow rerun with substituted inputs, unknown admission or secret read
