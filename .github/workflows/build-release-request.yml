@@ -99,6 +99,7 @@ jobs:
           persist-credentials: false
           sparse-checkout: |
             tools
+            .github/workflows/build-release-request.yml
             release-requests/1.2.14.json
             release-continuations/1.2.14.json
           sparse-checkout-cone-mode: false
