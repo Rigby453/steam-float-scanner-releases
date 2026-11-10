@@ -17,7 +17,7 @@ const context = () => ({ GITHUB_REPOSITORY: 'Rigby453/steam-float-scanner-releas
 
 test('strict reviewed one-version request accepts only the bounded transport schema', () => {
   assert.equal(validateReleaseRequest(request()).version, VERSION);
-  for (const mutate of [r => r.version = '1.2.15', r => r.sourceCommit = 'HEAD', r => r.extra = true,
+  for (const mutate of [r => r.version = '1.2.16', r => r.sourceCommit = 'HEAD', r => r.extra = true,
     r => r.baseZip.url = 'https://example.invalid/source.zip', r => r.supplement.path = '../pack',
     r => r.supplement.bytes = 17 * 1024 * 1024, r => r.releaseNotes = '']) {
     const value = request(); mutate(value); assert.throws(() => validateReleaseRequest(value));
@@ -106,7 +106,7 @@ test('unchanged signer accepts explicit source materialization metadata and exac
 test('workflow leaves key-bearing signer separate and gives write token only to staging', () => {
   const publishedWorkflow = new URL('../.github/workflows/build-release-request.yml', import.meta.url);
   const workflow = readFileSync(existsSync(publishedWorkflow) ? publishedWorkflow : new URL('./build-release-request.yml', import.meta.url), 'utf8');
-  assert.match(workflow, /paths: \['release-requests\/1\.2\.14\.json'\]/);
+  assert(workflow.includes("paths: ['release-requests/" + VERSION + ".json']"));
   assert.doesNotMatch(workflow, /SFS_UPDATE_PRIVATE_KEY|SFS_UPDATE_KEY_PASSPHRASE|environment: release-signing|GITHUB_EVENT_NAME:/);
   assert.match(workflow, /actions: write/);
   const source = readFileSync(new URL('./release-request.mjs', import.meta.url), 'utf8');
@@ -128,11 +128,33 @@ test('failed qualification retains only named candidate bytes and never supplies
   assert.match(retained, /name: scanner-retained-candidate-\$\{\{ github\.run_id \}\}/);
   const paths = retained.split('\n').filter(line => line.startsWith('            ')).map(line => line.trim());
   const prefix = '${{ runner.temp }}/scanner-source/release/';
-  assert.deepEqual(paths, ['Steam-Float-Scanner-Setup-1.2.14.exe', 'Steam-Float-Scanner-Setup-1.2.14.exe.blockmap', 'latest.yml', 'build-verification.json', 'financial-acceptance.json', 'purchase-readiness.json'].map(name => prefix + name));
+  assert.deepEqual(paths, ['Steam-Float-Scanner-Setup-1.2.15.exe', 'Steam-Float-Scanner-Setup-1.2.15.exe.blockmap', 'latest.yml', 'build-verification.json', 'financial-acceptance.json', 'purchase-readiness.json'].map(name => prefix + name));
   assert.match(retained, /if-no-files-found: ignore/); assert.match(retained, /retention-days: 7/);
   assert.doesNotMatch(retained, /continue-on-error|run:/);
   const stage = workflow.split('\n  stage:')[1];
   assert.match(stage, /needs: windows/);
   assert.match(stage, /name: scanner-native-request-\$\{\{ github\.run_id \}\}/);
   assert.doesNotMatch(stage, /scanner-retained-candidate/);
+});
+
+test('financial CI awaits the true native exit and requires actual strict proof before admission', () => {
+  const published = new URL('../.github/workflows/build-release-request.yml', import.meta.url);
+  const workflow = readFileSync(existsSync(published) ? published : new URL('./build-release-request.yml', import.meta.url), 'utf8');
+  const block = workflow.split('      - name: Actual packaged financial recognition and Stop receipt safeguards\n')[1]?.split('      - name: Require current original-key financial admission before staging\n')[0];
+  assert(block);
+  assert(block.includes('execFileSync('));
+  assert(block.includes("ELECTRON_RUN_AS_NODE: '1'"));
+  assert(block.includes('FINANCIAL_PROOF_ALREADY_EXISTS'));
+  assert(block.includes('FINANCIAL_PROOF_MISSING_AFTER_CHILD_EXIT'));
+  assert(block.includes('validateFinancialAcceptance(proof, request)'));
+  assert(block.includes('timeout: 120000'));
+  assert(!block.includes("& '."));
+});
+
+test('staging sparse checkout includes the actual workflow read by its pure tests', () => {
+  const published = new URL('../.github/workflows/build-release-request.yml', import.meta.url);
+  const workflow = readFileSync(existsSync(published) ? published : new URL('./build-release-request.yml', import.meta.url), 'utf8');
+  const stage = workflow.split('\n  stage:')[1];
+  assert(stage.includes('            .github/workflows/build-release-request.yml\n'));
+  assert.equal(VERSION, '1.2.15');
 });

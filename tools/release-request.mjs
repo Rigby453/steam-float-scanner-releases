@@ -8,7 +8,7 @@ import { pathToFileURL } from 'node:url';
 import { inflateRawSync, deflateRawSync, crc32 } from 'node:zlib';
 import { REPOSITORY, createClient, validateRequest, validateProof, validateFeed, validatePurchaseAdmission } from './sign-release.mjs';
 
-export const VERSION = '1.2.14';
+export const VERSION = '1.2.15';
 export const REQUEST_PATH = `release-requests/${VERSION}.json`;
 export const PACK_PATH = `release-requests/${VERSION}.pack.b64`;
 export const BASE_ZIP_URL = 'https://github.com/Rigby453/steam-float-scanner-releases/releases/download/v1.2.13/steam-float-scanner-source-1.2.13.zip';
