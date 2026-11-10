@@ -1,0 +1,148 @@
+name: Build an explicit reviewed Scanner release request
+
+on:
+  push:
+    branches: [main]
+    paths: ['release-requests/1.2.14.json']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: scanner-release-request-1.2.14
+  cancel-in-progress: false
+
+env:
+  NODE_OPTIONS: ''
+  NODE_PATH: ''
+
+jobs:
+  windows:
+    if: github.repository == 'Rigby453/steam-float-scanner-releases' && github.ref == 'refs/heads/main'
+    runs-on: windows-latest
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    env:
+      SFS_NETWORK_DISABLED: '1'
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          path: trusted
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+      - name: Check trusted orchestration before any source execution
+        working-directory: trusted
+        shell: pwsh
+        run: |
+          if ((Get-FileHash -LiteralPath tools/release-request.mjs -Algorithm SHA256).Hash.ToLowerInvariant() -ne '92b3dc82f05fcfc8e1fe202705ba5a50f344f425c864b8e5f9bd81a7c1d91079') { throw 'REQUEST_HELPER_HASH_MISMATCH' }
+          if ((Get-FileHash -LiteralPath tools/sign-release.mjs -Algorithm SHA256).Hash.ToLowerInvariant() -ne '12088d415fc8553ee0a7491d1457813c2c42204121ca1f20b5a9d866b532c38a') { throw 'SIGNER_HASH_MISMATCH' }
+          node --test tools/release-request.test.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Materialize the exact shallow source tree from pinned public bytes and Git objects
+        shell: pwsh
+        run: |
+          node trusted/tools/release-request.mjs prepare trusted "$env:RUNNER_TEMP/scanner-source"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Use a fresh canonical temporary directory for native children
+        shell: pwsh
+        run: |
+          $p = Join-Path $env:RUNNER_TEMP 'scanner-child-temp'
+          New-Item -ItemType Directory -Path $p -ErrorAction Stop | Out-Null
+          $r = (Resolve-Path -LiteralPath $p).Path
+          "TEMP=$r" | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
+          "TMP=$r" | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
+      - name: Restore locked dependencies without lifecycle scripts
+        working-directory: ${{ runner.temp }}/scanner-source
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Prepare checksum-verified official Electron
+        working-directory: ${{ runner.temp }}/scanner-source
+        run: node node_modules/electron/install.js
+      - name: Full strict check and source build
+        working-directory: ${{ runner.temp }}/scanner-source
+        run: npm run build
+      - name: Root source suite
+        working-directory: ${{ runner.temp }}/scanner-source
+        run: npx vitest run --maxWorkers=1
+      - name: Engine source suite
+        working-directory: ${{ runner.temp }}/scanner-source
+        run: npm run test --workspace @sfs/engine -- --maxWorkers=1
+      - name: Desktop source suite
+        working-directory: ${{ runner.temp }}/scanner-source
+        run: npm run test --workspace @sfs/desktop -- --maxWorkers=1
+      - name: Financial artifact and native provenance regressions
+        working-directory: ${{ runner.temp }}/scanner-source
+        run: node --test --test-concurrency=1 tests/packaging/packaged-purchase-identity.test.mjs tests/packaging/build-provenance.test.mjs tests/packaging/purchase-protocol-build.test.mjs
+      - name: Build and fully verify the single native Windows installer
+        working-directory: ${{ runner.temp }}/scanner-source
+        run: npm run package:windows
+      - name: Actual packaged financial recognition and Stop receipt safeguards
+        working-directory: ${{ runner.temp }}/scanner-source
+        shell: pwsh
+        env:
+          ELECTRON_RUN_AS_NODE: '1'
+        run: |
+          & '.\release\win-unpacked\Steam Float Scanner.exe' tools/release-acceptance/packaged-financial.mjs --root . --output release/financial-acceptance.json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Require current original-key financial admission before staging
+        working-directory: ${{ runner.temp }}/scanner-source
+        run: npm run release:verify-purchase
+      - name: Create only the sanitized exact release bundle
+        shell: pwsh
+        run: |
+          node trusted/tools/release-request.mjs bundle trusted "$env:RUNNER_TEMP/scanner-source" "$env:RUNNER_TEMP/scanner-release-bundle"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: scanner-native-request-${{ github.run_id }}
+          path: ${{ runner.temp }}/scanner-release-bundle/
+          if-no-files-found: error
+          retention-days: 7
+
+  stage:
+    needs: windows
+    if: github.repository == 'Rigby453/steam-float-scanner-releases' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    # No signing Environment or key access. Token cannot cross into source code.
+    permissions:
+      contents: write
+      actions: write
+    concurrency:
+      group: official-release-publication
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          sparse-checkout: |
+            tools
+            release-requests/1.2.14.json
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: scanner-native-request-${{ github.run_id }}
+          path: ${{ runner.temp }}/scanner-release-bundle
+      - name: Verify trusted staging code before receiving a write token
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s\n' '92b3dc82f05fcfc8e1fe202705ba5a50f344f425c864b8e5f9bd81a7c1d91079  tools/release-request.mjs' | sha256sum --check --strict
+          printf '%s\n' '12088d415fc8553ee0a7491d1457813c2c42204121ca1f20b5a9d866b532c38a  tools/sign-release.mjs' | sha256sum --check --strict
+          node --test tools/release-request.test.mjs
+      - name: Upload only the verified draft and dispatch the unchanged protected signer
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          printf '%s\n' '92b3dc82f05fcfc8e1fe202705ba5a50f344f425c864b8e5f9bd81a7c1d91079  tools/release-request.mjs' | sha256sum --check --strict
+          printf '%s\n' '12088d415fc8553ee0a7491d1457813c2c42204121ca1f20b5a9d866b532c38a  tools/sign-release.mjs' | sha256sum --check --strict
+          node tools/release-request.mjs stage . "$RUNNER_TEMP/scanner-release-bundle"
