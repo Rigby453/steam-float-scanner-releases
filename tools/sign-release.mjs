@@ -87,6 +87,82 @@ export function validateProof(proof, request, asset, linux = false) {
   } else requireThat(proof.installerSha256 === asset.sha256, 'WINDOWS_PROOF_HASH_MISMATCH');
 }
 
+
+// Verify original-key AUTO_BUY admission before publishing a new installer.
+// No artifact source is imported, no private key is needed, and no Steam request is made.
+export const PURCHASE_PROTOCOL_SHA256 = '8df06ca0e4ace35169275cc290acd114db2bb6ef3a0f9cbda00efc6cf0069b53';
+function isoDate(value) {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/.test(value)) return false;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) && new Date(parsed).toISOString().slice(0,19) === value.slice(0,19);
+}
+export function validatePurchaseAdmission(proof, policyBytes, now = Date.now(), publicKey = PUBLIC_KEY) {
+  const identity = proof?.purchaseImplementation;
+  requireThat(exactKeys(identity, ['kind','implementationSha256','canonicalBundleSha256','platform','architecture']) && identity.kind === 'SFS_PACKAGED_PURCHASE_V1'
+    && sha(identity.implementationSha256) && sha(identity.canonicalBundleSha256)
+    && ['win32', 'linux'].includes(identity.platform) && ['x64', 'arm64'].includes(identity.architecture),
+    'PACKAGED_PURCHASE_IDENTITY_MISSING');
+  requireThat(Buffer.isBuffer(policyBytes) && policyBytes.length <= 64 * 1024, 'PURCHASE_POLICY_TOO_LARGE');
+  let signed;
+  try { signed = JSON.parse(policyBytes.toString('utf8')); } catch { fail('INVALID_PURCHASE_POLICY'); }
+  const p = signed?.payload;
+  requireThat(exactKeys(signed, ['payload', 'signature'])
+    && exactKeys(p, ['kind', 'schemaVersion', 'revision', 'publishedAt', 'expiresAt', 'implementations'])
+    && p.kind === 'steam-float-scanner-purchase-protocol' && p.schemaVersion === 1
+    && Number.isSafeInteger(p.revision) && p.revision > 0
+    && isoDate(p.publishedAt) && isoDate(p.expiresAt)
+    && Array.isArray(p.implementations) && p.implementations.length >= 1 && p.implementations.length <= 32,
+    'INVALID_PURCHASE_POLICY');
+  const start = Date.parse(p.publishedAt), end = Date.parse(p.expiresAt);
+  requireThat(Number.isFinite(now) && Number.isFinite(start) && Number.isFinite(end)
+    && start <= now + 300000 && end > now && end - start > 0 && end - start <= 90 * 86400000,
+    'PURCHASE_POLICY_EXPIRED');
+  const seen = new Set();
+  for (const row of p.implementations) {
+    requireThat(exactKeys(row, ['clientVersion', 'implementationSha256', 'protocolSha256', 'platform', 'architecture',
+      'sourceEvidenceSha256', 'authenticatedAcceptanceSha256', 'acceptance'])
+      && typeof row.clientVersion === 'string' && /^\d{1,4}\.\d{1,4}\.\d{1,4}$/.test(row.clientVersion)
+      && [row.implementationSha256,row.protocolSha256,row.sourceEvidenceSha256,row.authenticatedAcceptanceSha256].every(sha)
+      && ['win32','linux'].includes(row.platform) && ['x64','arm64'].includes(row.architecture)
+      && row.protocolSha256 === PURCHASE_PROTOCOL_SHA256
+      && row.acceptance === 'AUTHENTICATED_EXACT_PURCHASE_VERIFIED', 'INVALID_PURCHASE_POLICY');
+    const key = [row.clientVersion,row.platform,row.architecture,row.implementationSha256].join(':');
+    requireThat(!seen.has(key), 'INVALID_PURCHASE_POLICY'); seen.add(key);
+  }
+  const bytes = Buffer.from(JSON.stringify({ kind:p.kind, schemaVersion:p.schemaVersion, revision:p.revision,
+    publishedAt:p.publishedAt, expiresAt:p.expiresAt, implementations:p.implementations.map(row=>({
+      clientVersion:row.clientVersion, implementationSha256:row.implementationSha256, protocolSha256:row.protocolSha256,
+      platform:row.platform, architecture:row.architecture, sourceEvidenceSha256:row.sourceEvidenceSha256,
+      authenticatedAcceptanceSha256:row.authenticatedAcceptanceSha256, acceptance:row.acceptance,
+    })) }));
+  requireThat(typeof signed.signature === 'string' && /^[A-Za-z0-9+/]{86}==$/.test(signed.signature)
+    && Buffer.from(signed.signature,'base64').toString('base64') === signed.signature
+    && verify(null, bytes, publicKey, Buffer.from(signed.signature,'base64')), 'INVALID_PURCHASE_POLICY_SIGNATURE');
+  const admitted = p.implementations.filter(row=>row.implementationSha256 === identity.implementationSha256
+    && row.platform === identity.platform && row.architecture === identity.architecture);
+  requireThat(admitted.length === 1, 'PACKAGED_PURCHASE_NOT_ADMITTED');
+  requireThat(end - now >= 24 * 3600000, 'PURCHASE_POLICY_RENEWAL_REQUIRED');
+  return { implementationSha256:identity.implementationSha256, policyRevision:p.revision,
+    policyExpiresAt:p.expiresAt, policySha256:digest(policyBytes), reviewedClientVersion:admitted[0].clientVersion };
+}
+
+async function inspectPurchaseAdmission(client, windowsProof, linuxProof) {
+  const release = await client.api('/releases/tags/purchase-compatibility-v1');
+  const assets = catalog(await releaseAssets(client, release.id));
+  const policy = assets.get('protocol.json');
+  requireThat(policy && policy.size <= 64 * 1024, 'PURCHASE_POLICY_NOT_PUBLISHED');
+  const downloaded = await client.download(policy.id, policy.size, true);
+  const result = validatePurchaseAdmission(windowsProof, downloaded.body);
+  requireThat(windowsProof.purchaseImplementation.platform === 'win32'
+    && windowsProof.purchaseImplementation.architecture === 'x64', 'PURCHASE_PACKAGE_TARGET_MISMATCH');
+  if (linuxProof) {
+    validatePurchaseAdmission(linuxProof, downloaded.body);
+    requireThat(linuxProof.purchaseImplementation.platform === 'linux'
+      && linuxProof.purchaseImplementation.architecture === 'x64', 'PURCHASE_PACKAGE_TARGET_MISMATCH');
+  }
+  return result;
+}
+
 function parseJson(bytes) {
   try { return JSON.parse(bytes.toString('utf8').replace(/^\uFEFF/, '')); }
   catch { fail('INVALID_JSON'); }
@@ -212,8 +288,11 @@ async function inspect(client, inputs, allowedGenerated = []) {
     actual.set(expected.name, data);
   }
   const windows = request.assets.find(a => a.name.endsWith('.exe'));
-  validateProof(parseJson(actual.get('build-verification.json').body), request, windows);
-  if (request.linuxDeb) validateProof(parseJson(actual.get('linux-build-verification.json').body), request, request.assets.find(a => a.name.endsWith('.deb')), true);
+  const windowsProof = parseJson(actual.get('build-verification.json').body);
+  validateProof(windowsProof, request, windows);
+  const linuxProof = request.linuxDeb ? parseJson(actual.get('linux-build-verification.json').body) : null;
+  if (linuxProof) validateProof(linuxProof, request, request.assets.find(a => a.name.endsWith('.deb')), true);
+  const purchaseAdmission = await inspectPurchaseAdmission(client, windowsProof, linuxProof);
   const notes = typeof release.body === 'string' ? release.body.trim() : '';
   requireThat(notes.length > 0 && notes.length <= 100_000, 'INVALID_RELEASE_NOTES');
   requireThat(digest(Buffer.from(notes)) === request.releaseNotesSha256, 'RELEASE_NOTES_HASH_MISMATCH');
@@ -222,7 +301,7 @@ async function inspect(client, inputs, allowedGenerated = []) {
     const linux = request.assets.find(a => a.name.endsWith('.deb'));
     validateFeed(actual.get('latest-linux.yml').body, request.version, linux.name, actual.get(linux.name));
   }
-  return { release, assets, request, actual, notes };
+  return { release, assets, request, actual, notes, purchaseAdmission };
 }
 
 export function validateFeed(bytes, version, filename, data) {

@@ -54,8 +54,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          printf '%s\n' '533d7204d62667225109cbd139c1cc1aa06eb1494eec4875fe2591774b8b2b2e  tools/sign-release.mjs' | sha256sum --check --strict
-          node --test tools/sign-release.test.mjs
+          printf '%s\n' '12088d415fc8553ee0a7491d1457813c2c42204121ca1f20b5a9d866b532c38a  tools/sign-release.mjs' | sha256sum --check --strict
+          node --test tools/sign-release.test.mjs tools/purchase-admission.test.mjs
       - name: Verify exact draft and native proof consistency without signing secrets
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -83,5 +83,5 @@ jobs:
           SFS_UPDATE_KEY_PASSPHRASE: ${{ secrets.SFS_UPDATE_KEY_PASSPHRASE }}
         run: |
           set -euo pipefail
-          printf '%s\n' '533d7204d62667225109cbd139c1cc1aa06eb1494eec4875fe2591774b8b2b2e  tools/sign-release.mjs' | sha256sum --check --strict
+          printf '%s\n' '12088d415fc8553ee0a7491d1457813c2c42204121ca1f20b5a9d866b532c38a  tools/sign-release.mjs' | sha256sum --check --strict
           node tools/sign-release.mjs publish
