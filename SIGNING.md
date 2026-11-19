@@ -55,7 +55,11 @@ Review the source CI run and exact source commit using source-repo access.
 Create a *new stable draft* `v<version>` in the release repository. Its body
 must be the reviewed release notes; existing published versions are rejected.
 
-For a Windows and Linux release, attach these nine unsigned assets:
+Product source stays in the private `parserst/steam-float-scanner` repository.
+Use the verified artifacts of its CI run. GitHub's automatic source archives
+for the public tag contain the release repository's own files.
+
+For a Windows and Linux release, attach these eight unsigned assets:
 
 - `Steam-Float-Scanner-Setup-<version>.exe`
 - `Steam-Float-Scanner-Setup-<version>.exe.blockmap`
@@ -64,7 +68,6 @@ For a Windows and Linux release, attach these nine unsigned assets:
 - `Steam-Float-Scanner-<version>-amd64.deb`
 - `latest-linux.yml`
 - `linux-build-verification.json`
-- `steam-float-scanner-source-<version>.zip`
 - `release-source.json`
 
 Do not attach signed manifests before dispatch. For a Windows-only release,
@@ -95,9 +98,9 @@ package and reviewed evidence. The review file is public once published.
 ```json
 {
   "version": "0.2.150",
+  "sourceRepository": "parserst/steam-float-scanner",
   "sourceCommit": "<40 lowercase hex characters>",
   "sourceSha256": "<native proof source hash: 64 lowercase hex>",
-  "sourceZip": { "name": "steam-float-scanner-source-0.2.150.zip", "sha256": "<64 lowercase hex>", "bytes": 123 },
   "ciRunId": "<reviewed source workflow run ID>",
   "releaseNotesSha256": "<SHA256 of UTF8 draft body after trim>",
   "assets": [
@@ -106,12 +109,13 @@ package and reviewed evidence. The review file is public once published.
 }
 ```
 
-The `assets` array has eight entries for Windows+Linux or five for
+The `assets` array has seven entries for Windows+Linux or four for
 Windows only, plus the purchase review when provided. Every entry has exactly
 `name`, `sha256`, and `bytes`. Inventory
 the exact uploaded bytes. `release-source.json` cannot hash itself. Its SHA256
-is provided separately as dispatch input. Additional existing provenance
-fields such as artifact IDs may remain in that JSON; none is executed.
+is provided separately as dispatch input. The workflow verifies the recorded
+private repository, exact commit and package hashes. It rejects source
+archives and fields beyond the schema above.
 
 From an authenticated Cloud terminal, dispatch on `main` with:
 
@@ -130,7 +134,7 @@ acceptance is not job completion.
 
 The first job has no signing secrets. It checks workflow identity, new stable
 version, exact draft ID/tag, complete asset inventory, bounded downloads and
-hashes, native proof source/version/installer consistency, source ZIP identity,
+hashes, native proof source/version/installer consistency, private repository identity,
 draft-note hash, and the fixed one-installer update-feed format.
 
 The signing job rechecks the same data. It decrypts the key in memory, confirms

@@ -1,4 +1,5 @@
 name: Sign and publish verified Scanner release
+run-name: Publish SFS ${{ inputs.version }} (draft ${{ inputs.release_id }})
 
 on:
   workflow_dispatch:
@@ -54,7 +55,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          printf '%s\n' 'd24d0f5e87655bc518222d314cf537f7e71850f8d5711fd84c713715c3469fc3  tools/sign-release.mjs' | sha256sum --check --strict
+          printf '%s\n' '951181c2986603228375d1ef8f11e997d96966890b57ceb912cf20d9a9a4babf  tools/sign-release.mjs' | sha256sum --check --strict
           node --test tools/sign-release.test.mjs tools/purchase-admission.test.mjs
       - name: Verify exact draft, native proof and purchase admission without signing secrets
         env:
@@ -83,5 +84,5 @@ jobs:
           SFS_UPDATE_KEY_PASSPHRASE: ${{ secrets.SFS_UPDATE_KEY_PASSPHRASE }}
         run: |
           set -euo pipefail
-          printf '%s\n' 'd24d0f5e87655bc518222d314cf537f7e71850f8d5711fd84c713715c3469fc3  tools/sign-release.mjs' | sha256sum --check --strict
+          printf '%s\n' '951181c2986603228375d1ef8f11e997d96966890b57ceb912cf20d9a9a4babf  tools/sign-release.mjs' | sha256sum --check --strict
           node tools/sign-release.mjs publish
