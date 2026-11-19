@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash, generateKeyPairSync, verify } from 'node:crypto';
-import { REPOSITORY, SOURCE_REPOSITORY, validateInputs, validateRequest, validateProof, validateFeed, createManifest, signedPayload, createClient, checkDraft } from './sign-release.mjs';
+import { REPOSITORY, SOURCE_REPOSITORY, validateInputs, validateRequest, validateProof, validateWindowsQualification, validateFeed, createManifest, signedPayload, createClient, checkDraft } from './sign-release.mjs';
 
 const version = '0.2.149', sourceCommit = 'a'.repeat(40), sourceSha256 = 'b'.repeat(64);
 const inputs = { version, sourceCommit, releaseId: '123', requestSha256: 'c'.repeat(64) };
@@ -62,6 +62,23 @@ test('native PASS must bind the exact source, version and installer digest', () 
   for (const change of [{ status: 'FAIL' }, { version: '0.2.148' }, { baseCommit: 'f'.repeat(40) }, { installerSha256: 'f'.repeat(64) }]) {
     assert.throws(() => validateProof({ ...proof, ...change }, req, exe));
   }
+});
+
+test('local Windows qualification must be explicit, complete and bound to the exact package', () => {
+  const { ciRunId, ...local } = request();
+  local.qualification = 'WINDOWS_LOCAL_V1';
+  assert.throws(() => validateRequest(local, inputs), /INVALID_ASSET_COUNT/);
+  local.assets.push(asset('windows-qualification.json'));
+  assert.equal(validateRequest(local, inputs).qualification, 'WINDOWS_LOCAL_V1');
+  assert.throws(() => validateRequest({ ...local, ciRunId }, inputs), /REQUEST_IDENTITY_MISMATCH/);
+  assert.throws(() => validateRequest({ ...local,
+    assets: [...local.assets, asset(`Steam-Float-Scanner-${version}-amd64.deb`)] }, inputs), /WINDOWS_ONLY/);
+  const exe = local.assets[0];
+  const checks = { typecheck: 'PASS', root: 'PASS', engine: 'PASS', desktop: 'PASS', nativePackage: 'PASS', packagedFinancial: 'PASS' };
+  const proof = { format: 'SFS_WINDOWS_QUALIFICATION_V1', version, sourceCommit, sourceSha256, installerSha256: exe.sha256, checks };
+  validateWindowsQualification(proof, local, exe);
+  assert.throws(() => validateWindowsQualification({ ...proof, checks: { ...checks, nativePackage: 'FAIL' } }, local, exe), /INCOMPLETE/);
+  assert.throws(() => validateWindowsQualification({ ...proof, installerSha256: 'f'.repeat(64) }, local, exe), /IDENTITY_MISMATCH/);
 });
 
 test('parses only the bounded one-installer electron-builder feed and catches altered hashes', () => {

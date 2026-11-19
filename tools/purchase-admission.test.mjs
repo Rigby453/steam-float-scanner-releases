@@ -151,6 +151,13 @@ test('new admission requires review of the exact source, installer, platform, bu
  assert.throws(() => planPurchaseAdmission(targets, reviewedRequest, review, previous, now, otherKey), /POLICY_SIGNATURE/);
 });
 
+test('a new implementation cannot reuse authenticated evidence from an older implementation', () => {
+ const { targets, review, previous } = reviewCase();
+ const historical = JSON.parse(previous).payload.implementations[0].authenticatedAcceptanceSha256;
+ const modified = { ...review, targets: [{ ...review.targets[0], authenticatedAcceptanceSha256: historical }] };
+ assert.throws(() => planPurchaseAdmission(targets, reviewedRequest, modified, previous, now, key), /PURCHASE_REVIEW_HISTORICAL/);
+});
+
 test('expiring policy renews with a matching review and keeps one entry per existing implementation', () => {
  const { targets, review, previous } = reviewCase(policy({ expiresAt: '2026-11-10T11:00:00Z' }), identity);
  assert.throws(() => planPurchaseAdmission(targets, reviewedRequest, undefined, previous, now, key), /EXPIRED/);

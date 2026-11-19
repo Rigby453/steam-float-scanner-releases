@@ -51,12 +51,14 @@ The signer is standalone and imports only Node builtins.
 ## Preparing a release
 
 Produce native Windows package proof, and Linux proof when releasing the deb.
-Review the source CI run and exact source commit using source-repo access.
+Review the exact source commit using source-repo access. Use its verified CI
+artifacts when available, or use the private project's `npm run release:windows`
+to qualify a Windows-only installer on a native build host.
 Create a *new stable draft* `v<version>` in the release repository. Its body
 must be the reviewed release notes; existing published versions are rejected.
 
 Product source stays in the private `parserst/steam-float-scanner` repository.
-Use the verified artifacts of its CI run. GitHub's automatic source archives
+Publish only the package from the verified source. GitHub's automatic source archives
 for the public tag contain the release repository's own files.
 
 For a Windows and Linux release, attach these eight unsigned assets:
@@ -116,6 +118,15 @@ the exact uploaded bytes. `release-source.json` cannot hash itself. Its SHA256
 is provided separately as dispatch input. The workflow verifies the recorded
 private repository, exact commit and package hashes. It rejects source
 archives and fields beyond the schema above.
+
+For a locally qualified Windows-only release, replace the `ciRunId` field with
+`"qualification": "WINDOWS_LOCAL_V1"` and include `windows-qualification.json`
+in the draft inventory. It binds the version, source commit, source digest and
+installer digest to passing typecheck, root, engine, desktop, native package and
+packaged financial gates. The protected workflow independently checks those
+identities against the downloaded installer, native proof, signed purchase
+policy and update feed. The authorized release preparer attests to the local
+checks, just as the CI path relies on the preparer to review the private CI run.
 
 From an authenticated Cloud terminal, dispatch on `main` with:
 
