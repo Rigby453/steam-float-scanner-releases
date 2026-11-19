@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash, generateKeyPairSync, verify } from 'node:crypto';
-import { REPOSITORY, validateInputs, validateRequest, validateProof, validateFeed, createManifest, signedPayload, createClient, checkDraft } from './sign-release.mjs';
+import { REPOSITORY, SOURCE_REPOSITORY, validateInputs, validateRequest, validateProof, validateFeed, createManifest, signedPayload, createClient, checkDraft } from './sign-release.mjs';
 
 const version = '0.2.149', sourceCommit = 'a'.repeat(40), sourceSha256 = 'b'.repeat(64);
 const inputs = { version, sourceCommit, releaseId: '123', requestSha256: 'c'.repeat(64) };
@@ -12,9 +12,8 @@ const baseEnv = {
 };
 const asset = name => ({ name, sha256: 'd'.repeat(64), bytes: 1024 });
 function request() {
-  const zip = asset(`steam-float-scanner-source-${version}.zip`);
-  return { version, sourceCommit, sourceSha256, ciRunId: '456', releaseNotesSha256: 'e'.repeat(64), sourceZip: { ...zip }, assets: [
-    asset(`Steam-Float-Scanner-Setup-${version}.exe`), asset(`Steam-Float-Scanner-Setup-${version}.exe.blockmap`), zip,
+  return { version, sourceRepository: SOURCE_REPOSITORY, sourceCommit, sourceSha256, ciRunId: '456', releaseNotesSha256: 'e'.repeat(64), assets: [
+    asset(`Steam-Float-Scanner-Setup-${version}.exe`), asset(`Steam-Float-Scanner-Setup-${version}.exe.blockmap`),
     asset('build-verification.json'), asset('latest.yml'),
   ] };
 }
@@ -28,13 +27,22 @@ test('accepts only the fixed repository, main, workflow_dispatch and exact input
   }
 });
 
-test('rejects arbitrary names, duplicate assets, changed commits and unbound source ZIP', () => {
+test('binary-only release input rejects arbitrary assets, duplicate names and wrong source provenance', () => {
   assert.equal(validateRequest(request(), inputs).linuxDeb, false);
   const duplicate = request(); duplicate.assets[1] = duplicate.assets[0];
   const traversal = request(); traversal.assets[0].name = '../../private.pem';
   const extra = request(); extra.assets.push(asset('execute-me.mjs'));
-  const wrongZip = request(); wrongZip.sourceZip.sha256 = 'f'.repeat(64);
-  for (const bad of [duplicate, traversal, extra, wrongZip, { ...request(), sourceCommit: 'f'.repeat(40) }]) {
+  for (const bad of [duplicate, traversal, extra, { ...request(), sourceCommit: 'f'.repeat(40) },
+    { ...request(), sourceRepository: 'unknown/scanner' }, { ...request(), ciRunId: '0' }]) {
+    assert.throws(() => validateRequest(bad, inputs));
+  }
+});
+
+test('release inventory rejects a source ZIP in metadata, as a replacement asset or as an extra asset', () => {
+  const archive = asset(`steam-float-scanner-source-${version}.zip`);
+  const replaced = request(); replaced.assets[0] = archive;
+  const added = request(); added.assets.push(archive);
+  for (const bad of [{ ...request(), sourceZip: archive }, replaced, added]) {
     assert.throws(() => validateRequest(bad, inputs));
   }
 });

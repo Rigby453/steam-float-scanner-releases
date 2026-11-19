@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {generateKeyPairSync,sign,createHash} from 'node:crypto';
 import {activatePurchasePolicy, planPurchaseAdmission, signPlannedPurchasePolicy,
- validatePurchaseAdmission, PURCHASE_PROTOCOL_SHA256, run, REPOSITORY} from './sign-release.mjs';
+ validatePurchaseAdmission, PURCHASE_PROTOCOL_SHA256, run, REPOSITORY, SOURCE_REPOSITORY} from './sign-release.mjs';
 const keys=generateKeyPairSync('ed25519'), key=keys.publicKey.export({type:'spki',format:'pem'});
 const now=Date.parse('2026-11-10T12:00:00Z');
 const identity={kind:'SFS_PACKAGED_PURCHASE_V1',implementationSha256:'a'.repeat(64),
@@ -65,17 +65,16 @@ test('array-shaped version and unknown package identity fields cannot bypass pro
 function releaseHarness(admitted=true) {
  const version='1.2.14', sourceCommit='1'.repeat(40),sourceSha256='2'.repeat(64);
  const digest=bytes=>createHash('sha256').update(bytes).digest('hex');
- const installer=Buffer.from('synthetic installer only'),zip=Buffer.from('synthetic source only');
+ const installer=Buffer.from('synthetic installer only');
  const filename='Steam-Float-Scanner-Setup-'+version+'.exe';
- const data=new Map([[filename,installer],[filename+'.blockmap',Buffer.from('fixture blockmap')],
- ['steam-float-scanner-source-'+version+'.zip',zip]]);
+ const data=new Map([[filename,installer],[filename+'.blockmap',Buffer.from('fixture blockmap')]]);
  const proof={status:'PASS',version,sourceSha256,baseCommit:sourceCommit,installerSha256:digest(installer),purchaseImplementation:identity};
  data.set('build-verification.json',Buffer.from(JSON.stringify(proof)));
  const sha512=createHash('sha512').update(installer).digest('base64');
  data.set('latest.yml',Buffer.from('version: '+version+'\nfiles:\n  - url: '+filename+'\n    sha512: '+sha512+'\n    size: '+installer.length+'\npath: '+filename+'\nsha512: '+sha512+'\nreleaseDate: 2026-11-10T00:00:00.000Z\n'));
  const assets=[...data].map(([name,bytes])=>({name,sha256:digest(bytes),bytes:bytes.length}));
- const request={version,sourceCommit,sourceSha256,ciRunId:'456',releaseNotesSha256:digest(Buffer.from('Fixture release')),
- sourceZip:assets.find(a=>a.name.endsWith('.zip')),assets};
+ const request={version,sourceRepository:SOURCE_REPOSITORY,sourceCommit,sourceSha256,ciRunId:'456',
+ releaseNotesSha256:digest(Buffer.from('Fixture release')),assets};
  const requestBytes=Buffer.from(JSON.stringify(request));data.set('release-source.json',requestBytes);
  const policyBytes=policy(admitted?{}:{implementations:[]});
  // run uses real wall time; generate a current, bounded policy for this isolated fixture.

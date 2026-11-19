@@ -4,6 +4,7 @@ import { pathToFileURL } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
 
 export const REPOSITORY = 'Rigby453/steam-float-scanner-releases';
+export const SOURCE_REPOSITORY = 'parserst/steam-float-scanner';
 export const PUBLIC_KEY = '-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAOJb8WpemdYBC80YZzT2rnNwJBMeLc3V1f4oVvwFpVT0=\n-----END PUBLIC KEY-----';
 const API = `https://api.github.com/repos/${REPOSITORY}`;
 const REQUEST_NAME = 'release-source.json';
@@ -32,14 +33,17 @@ export function validateInputs(env) {
 }
 
 export function validateRequest(request, inputs) {
-  requireThat(record(request) && request.version === inputs.version && request.sourceCommit === inputs.sourceCommit
-    && sha(request.sourceSha256) && /^[0-9]+$/.test(String(request.ciRunId)) && sha(request.releaseNotesSha256)
+  requireThat(exactKeys(request, ['version', 'sourceRepository', 'sourceCommit', 'sourceSha256',
+    'ciRunId', 'releaseNotesSha256', 'assets'])
+    && request.sourceRepository === SOURCE_REPOSITORY
+    && request.version === inputs.version && request.sourceCommit === inputs.sourceCommit
+    && sha(request.sourceSha256) && typeof request.ciRunId === 'string'
+    && /^[1-9][0-9]*$/.test(request.ciRunId) && sha(request.releaseNotesSha256)
     && Array.isArray(request.assets), 'REQUEST_IDENTITY_MISMATCH');
-  const linuxDeb = request.assets.some(a => a.name === `Steam-Float-Scanner-${inputs.version}-amd64.deb`);
+  const linuxDeb = request.assets.some(a => a?.name === `Steam-Float-Scanner-${inputs.version}-amd64.deb`);
   const names = [
     `Steam-Float-Scanner-Setup-${inputs.version}.exe`,
     `Steam-Float-Scanner-Setup-${inputs.version}.exe.blockmap`,
-    `steam-float-scanner-source-${inputs.version}.zip`,
     'build-verification.json', 'latest.yml',
     ...(linuxDeb ? [`Steam-Float-Scanner-${inputs.version}-amd64.deb`, 'linux-build-verification.json', 'latest-linux.yml'] : []),
   ];
@@ -54,9 +58,6 @@ export function validateRequest(request, inputs) {
     seen.add(asset.name);
   }
   requireThat(names.every(name => seen.has(name)), 'MISSING_ASSET');
-  const zip = request.assets.find(a => a.name === `steam-float-scanner-source-${inputs.version}.zip`);
-  requireThat(record(request.sourceZip) && request.sourceZip.name === zip.name
-    && request.sourceZip.sha256 === zip.sha256 && request.sourceZip.bytes === zip.bytes, 'SOURCE_ZIP_IDENTITY_MISMATCH');
   return { ...request, linuxDeb };
 }
 
