@@ -1,0 +1,96 @@
+name: Verify Windows installer and startup from draft
+run-name: Windows startup v${{ inputs.version }} (draft ${{ inputs.release_id }})
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Exact stable installer version
+        required: true
+        type: string
+      release_id:
+        description: Existing draft release ID
+        required: true
+        type: string
+      installer_sha256:
+        description: SHA256 of the verified native installer
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  boot:
+    if: github.repository == 'Rigby453/steam-float-scanner-releases' && github.ref == 'refs/heads/main'
+    runs-on: windows-latest
+    timeout-minutes: 8
+    permissions:
+      contents: write # GitHub requires this to read draft assets.
+    env:
+      PROBE_VERSION: ${{ inputs.version }}
+      PROBE_DRAFT: ${{ inputs.release_id }}
+      PROBE_SHA256: ${{ inputs.installer_sha256 }}
+    steps:
+      - name: Download the exact draft installer
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:PROBE_VERSION -cnotmatch '^(0|[1-9][0-9]{0,3})\.(0|[1-9][0-9]{0,3})\.(0|[1-9][0-9]{0,3})$' -or
+              $env:PROBE_DRAFT -cnotmatch '^[1-9][0-9]*$' -or $env:PROBE_SHA256 -cnotmatch '^[a-f0-9]{64}$') {
+            throw 'INVALID_WINDOWS_BOOT_INPUTS'
+          }
+          $tag = 'v' + $env:PROBE_VERSION
+          $filename = "Steam-Float-Scanner-Setup-$($env:PROBE_VERSION).exe"
+          $repo = 'Rigby453/steam-float-scanner-releases'
+          $draftJson = gh api "repos/$repo/releases/$($env:PROBE_DRAFT)"
+          if ($LASTEXITCODE -ne 0) { throw 'DRAFT_READ_FAILED' }
+          $draft = $draftJson | ConvertFrom-Json
+          if (!$draft.draft -or $draft.prerelease -or $draft.tag_name -cne $tag) { throw 'INVALID_WINDOWS_BOOT_DRAFT' }
+          $assets = @($draft.assets | Where-Object { $_.name -ceq $filename -and $_.state -eq 'uploaded' })
+          if ($assets.Count -ne 1 -or $assets[0].size -gt 536870912 -or
+              $assets[0].digest -cne "sha256:$($env:PROBE_SHA256)") { throw 'DRAFT_INSTALLER_IDENTITY_MISMATCH' }
+          $destination = Join-Path $env:RUNNER_TEMP 'sfs-boot-probe'
+          gh release download $tag --repo $repo --pattern $filename --dir $destination
+          if ($LASTEXITCODE -ne 0) { throw 'DRAFT_INSTALLER_DOWNLOAD_FAILED' }
+          if ((Get-FileHash -LiteralPath (Join-Path $destination $filename) -Algorithm SHA256).Hash -ine $env:PROBE_SHA256) {
+            throw 'DRAFT_INSTALLER_HASH_MISMATCH'
+          }
+
+      - name: Install into a disposable runner profile and verify normal startup
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:GH_TOKEN -or $env:GITHUB_TOKEN) { throw 'UNEXPECTED_TOKEN_IN_EXECUTION_STEP' }
+          $env:SFS_NETWORK_DISABLED = '1'
+          $stage = Join-Path $env:RUNNER_TEMP 'sfs-boot-probe'
+          $installer = Join-Path $stage "Steam-Float-Scanner-Setup-$($env:PROBE_VERSION).exe"
+          if ((Get-FileHash -LiteralPath $installer -Algorithm SHA256).Hash -ine $env:PROBE_SHA256) {
+            throw 'DRAFT_INSTALLER_CHANGED'
+          }
+          $installation = Join-Path $stage 'installation'
+          $setup = Start-Process -FilePath $installer -ArgumentList @('/S', "/D=$installation") -PassThru -WindowStyle Hidden
+          if (!$setup.WaitForExit(90000)) { Stop-Process -Id $setup.Id -Force; throw 'WINDOWS_INSTALLER_TIMEOUT' }
+          if ($setup.ExitCode -ne 0) { throw 'WINDOWS_INSTALLER_FAILED' }
+          $app = Join-Path $installation 'Steam Float Scanner.exe'
+          $version = (Get-Item -LiteralPath $app).VersionInfo.ProductVersion
+          if ($version -notin @($env:PROBE_VERSION, "$($env:PROBE_VERSION).0")) { throw 'INSTALLED_VERSION_MISMATCH' }
+          $profile = Join-Path $stage 'profile'
+          $log = Join-Path $profile 'logs\steam-float-scanner.current.jsonl'
+          $process = Start-Process -FilePath $app -ArgumentList @("--user-data-dir=$profile", '--disable-background-networking') -PassThru -WindowStyle Hidden
+          try {
+            $deadline = [DateTime]::UtcNow.AddSeconds(50)
+            do {
+              if ($process.HasExited) { throw 'WINDOWS_APP_EXITED_BEFORE_STARTUP' }
+              if ((Test-Path -LiteralPath $log) -and (Get-Content -LiteralPath $log -Raw -Encoding utf8).Contains('Приложение запущено.')) {
+                Write-Output "WINDOWS_INSTALL_AND_BOOT_PASS v$($env:PROBE_VERSION) sha256:$($env:PROBE_SHA256)"
+                exit 0
+              }
+              Start-Sleep -Milliseconds 500
+            } while ([DateTime]::UtcNow -lt $deadline)
+            throw 'WINDOWS_APP_STARTUP_MARKER_MISSING'
+          } finally {
+            if (!$process.HasExited) { taskkill.exe /PID $process.Id /T /F | Out-Null }
+          }
