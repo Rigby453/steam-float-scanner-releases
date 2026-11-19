@@ -1,11 +1,17 @@
 // Trusted standalone release signer. Builtins only: never import source/artifact code.
 import { createHash, createPrivateKey, createPublicKey, sign, verify } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
+import { setTimeout as delay } from 'node:timers/promises';
 
 export const REPOSITORY = 'Rigby453/steam-float-scanner-releases';
 export const PUBLIC_KEY = '-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAOJb8WpemdYBC80YZzT2rnNwJBMeLc3V1f4oVvwFpVT0=\n-----END PUBLIC KEY-----';
 const API = `https://api.github.com/repos/${REPOSITORY}`;
 const REQUEST_NAME = 'release-source.json';
+const PURCHASE_REVIEW_NAME = 'purchase-review.json';
+const PURCHASE_POLICY_TAG = 'purchase-compatibility-v1';
+const PURCHASE_POLICY_NAME = 'protocol.json';
+const MAX_PURCHASE_POLICY = 64 * 1024;
+const DAY_MS = 86_400_000;
 const MAX_JSON = 2 * 1024 * 1024;
 const fail = code => { throw new Error(code); };
 const requireThat = (value, code) => { if (!value) fail(code); };
@@ -37,12 +43,14 @@ export function validateRequest(request, inputs) {
     'build-verification.json', 'latest.yml',
     ...(linuxDeb ? [`Steam-Float-Scanner-${inputs.version}-amd64.deb`, 'linux-build-verification.json', 'latest-linux.yml'] : []),
   ];
+  if (request.assets.some(asset => asset?.name === PURCHASE_REVIEW_NAME)) names.push(PURCHASE_REVIEW_NAME);
   requireThat(Array.isArray(request.assets) && request.assets.length === names.length, 'INVALID_ASSET_COUNT');
   const seen = new Set();
   for (const asset of request.assets) {
     requireThat(exactKeys(asset, ['name', 'sha256', 'bytes']) && names.includes(asset.name) && !seen.has(asset.name), 'INVALID_ASSET_NAME');
     requireThat(sha(asset.sha256) && Number.isSafeInteger(asset.bytes) && asset.bytes > 0 && asset.bytes <= 512 * 1024 * 1024, 'INVALID_ASSET_DIGEST');
     if (asset.name.endsWith('.json') || asset.name.endsWith('.yml')) requireThat(asset.bytes <= MAX_JSON, 'METADATA_TOO_LARGE');
+    if (asset.name === PURCHASE_REVIEW_NAME) requireThat(asset.bytes <= MAX_PURCHASE_POLICY, 'PURCHASE_REVIEW_TOO_LARGE');
     seen.add(asset.name);
   }
   requireThat(names.every(name => seen.has(name)), 'MISSING_ASSET');
@@ -62,7 +70,7 @@ export function signedPayload(manifest) {
   }));
 }
 
-export function createManifest(unsigned, encryptedPem, passphrase, publicKey = PUBLIC_KEY) {
+function signWithReleaseKey(bytes, encryptedPem, passphrase, publicKey) {
   requireThat(typeof encryptedPem === 'string' && encryptedPem.includes('-----BEGIN ENCRYPTED PRIVATE KEY-----')
     && typeof passphrase === 'string' && passphrase.length >= 32, 'SIGNING_SECRET_UNAVAILABLE');
   let privateKey;
@@ -72,9 +80,13 @@ export function createManifest(unsigned, encryptedPem, passphrase, publicKey = P
   const expected = createPublicKey(publicKey).export({ type: 'spki', format: 'der' });
   const actual = createPublicKey(privateKey).export({ type: 'spki', format: 'der' });
   requireThat(expected.equals(actual), 'WRONG_SIGNING_KEY');
-  const signature = sign(null, signedPayload(unsigned), privateKey).toString('base64');
-  requireThat(verify(null, signedPayload(unsigned), publicKey, Buffer.from(signature, 'base64')), 'SIGNATURE_SELF_CHECK_FAILED');
-  return { ...unsigned, signature };
+  const signature = sign(null, bytes, privateKey).toString('base64');
+  requireThat(verify(null, bytes, publicKey, Buffer.from(signature, 'base64')), 'SIGNATURE_SELF_CHECK_FAILED');
+  return signature;
+}
+
+export function createManifest(unsigned, encryptedPem, passphrase, publicKey = PUBLIC_KEY) {
+  return { ...unsigned, signature: signWithReleaseKey(signedPayload(unsigned), encryptedPem, passphrase, publicKey) };
 }
 
 export function validateProof(proof, request, asset, linux = false) {
@@ -96,13 +108,26 @@ function isoDate(value) {
   const parsed = Date.parse(value);
   return Number.isFinite(parsed) && new Date(parsed).toISOString().slice(0,19) === value.slice(0,19);
 }
-export function validatePurchaseAdmission(proof, policyBytes, now = Date.now(), publicKey = PUBLIC_KEY) {
+function packagedPurchaseIdentity(proof) {
   const identity = proof?.purchaseImplementation;
   requireThat(exactKeys(identity, ['kind','implementationSha256','canonicalBundleSha256','platform','architecture']) && identity.kind === 'SFS_PACKAGED_PURCHASE_V1'
     && sha(identity.implementationSha256) && sha(identity.canonicalBundleSha256)
     && ['win32', 'linux'].includes(identity.platform) && ['x64', 'arm64'].includes(identity.architecture),
     'PACKAGED_PURCHASE_IDENTITY_MISSING');
-  requireThat(Buffer.isBuffer(policyBytes) && policyBytes.length <= 64 * 1024, 'PURCHASE_POLICY_TOO_LARGE');
+  return identity;
+}
+
+function purchasePolicyBytes(payload) {
+  return Buffer.from(JSON.stringify({ kind: payload.kind, schemaVersion: payload.schemaVersion, revision: payload.revision,
+    publishedAt: payload.publishedAt, expiresAt: payload.expiresAt, implementations: payload.implementations.map(row => ({
+      clientVersion: row.clientVersion, implementationSha256: row.implementationSha256, protocolSha256: row.protocolSha256,
+      platform: row.platform, architecture: row.architecture, sourceEvidenceSha256: row.sourceEvidenceSha256,
+      authenticatedAcceptanceSha256: row.authenticatedAcceptanceSha256, acceptance: row.acceptance,
+    })) }));
+}
+
+function parseSignedPurchasePolicy(policyBytes, publicKey) {
+  requireThat(Buffer.isBuffer(policyBytes) && policyBytes.length <= MAX_PURCHASE_POLICY, 'PURCHASE_POLICY_TOO_LARGE');
   let signed;
   try { signed = JSON.parse(policyBytes.toString('utf8')); } catch { fail('INVALID_PURCHASE_POLICY'); }
   const p = signed?.payload;
@@ -113,10 +138,8 @@ export function validatePurchaseAdmission(proof, policyBytes, now = Date.now(), 
     && isoDate(p.publishedAt) && isoDate(p.expiresAt)
     && Array.isArray(p.implementations) && p.implementations.length >= 1 && p.implementations.length <= 32,
     'INVALID_PURCHASE_POLICY');
-  const start = Date.parse(p.publishedAt), end = Date.parse(p.expiresAt);
-  requireThat(Number.isFinite(now) && Number.isFinite(start) && Number.isFinite(end)
-    && start <= now + 300000 && end > now && end - start > 0 && end - start <= 90 * 86400000,
-    'PURCHASE_POLICY_EXPIRED');
+  const lifetime = Date.parse(p.expiresAt) - Date.parse(p.publishedAt);
+  requireThat(lifetime > 0 && lifetime <= 90 * DAY_MS, 'INVALID_PURCHASE_POLICY');
   const seen = new Set();
   for (const row of p.implementations) {
     requireThat(exactKeys(row, ['clientVersion', 'implementationSha256', 'protocolSha256', 'platform', 'architecture',
@@ -129,38 +152,168 @@ export function validatePurchaseAdmission(proof, policyBytes, now = Date.now(), 
     const key = [row.clientVersion,row.platform,row.architecture,row.implementationSha256].join(':');
     requireThat(!seen.has(key), 'INVALID_PURCHASE_POLICY'); seen.add(key);
   }
-  const bytes = Buffer.from(JSON.stringify({ kind:p.kind, schemaVersion:p.schemaVersion, revision:p.revision,
-    publishedAt:p.publishedAt, expiresAt:p.expiresAt, implementations:p.implementations.map(row=>({
-      clientVersion:row.clientVersion, implementationSha256:row.implementationSha256, protocolSha256:row.protocolSha256,
-      platform:row.platform, architecture:row.architecture, sourceEvidenceSha256:row.sourceEvidenceSha256,
-      authenticatedAcceptanceSha256:row.authenticatedAcceptanceSha256, acceptance:row.acceptance,
-    })) }));
   requireThat(typeof signed.signature === 'string' && /^[A-Za-z0-9+/]{86}==$/.test(signed.signature)
     && Buffer.from(signed.signature,'base64').toString('base64') === signed.signature
-    && verify(null, bytes, publicKey, Buffer.from(signed.signature,'base64')), 'INVALID_PURCHASE_POLICY_SIGNATURE');
-  const admitted = p.implementations.filter(row=>row.implementationSha256 === identity.implementationSha256
-    && row.platform === identity.platform && row.architecture === identity.architecture);
-  requireThat(admitted.length === 1, 'PACKAGED_PURCHASE_NOT_ADMITTED');
-  requireThat(end - now >= 24 * 3600000, 'PURCHASE_POLICY_RENEWAL_REQUIRED');
-  return { implementationSha256:identity.implementationSha256, policyRevision:p.revision,
-    policyExpiresAt:p.expiresAt, policySha256:digest(policyBytes), reviewedClientVersion:admitted[0].clientVersion };
+    && verify(null, purchasePolicyBytes(p), publicKey, Buffer.from(signed.signature,'base64')), 'INVALID_PURCHASE_POLICY_SIGNATURE');
+  return p;
 }
 
-async function inspectPurchaseAdmission(client, windowsProof, linuxProof) {
-  const release = await client.api('/releases/tags/purchase-compatibility-v1');
-  const assets = catalog(await releaseAssets(client, release.id));
-  const policy = assets.get('protocol.json');
-  requireThat(policy && policy.size <= 64 * 1024, 'PURCHASE_POLICY_NOT_PUBLISHED');
-  const downloaded = await client.download(policy.id, policy.size, true);
-  const result = validatePurchaseAdmission(windowsProof, downloaded.body);
-  requireThat(windowsProof.purchaseImplementation.platform === 'win32'
-    && windowsProof.purchaseImplementation.architecture === 'x64', 'PURCHASE_PACKAGE_TARGET_MISMATCH');
-  if (linuxProof) {
-    validatePurchaseAdmission(linuxProof, downloaded.body);
-    requireThat(linuxProof.purchaseImplementation.platform === 'linux'
-      && linuxProof.purchaseImplementation.architecture === 'x64', 'PURCHASE_PACKAGE_TARGET_MISMATCH');
+function matchingAdmissions(policy, identity) {
+  return policy.implementations.filter(row => row.implementationSha256 === identity.implementationSha256
+    && row.platform === identity.platform && row.architecture === identity.architecture);
+}
+
+function requirePurchaseAdmission(identity, p, policySha256, now) {
+  const end = Date.parse(p.expiresAt);
+  requireThat(Number.isFinite(now) && Date.parse(p.publishedAt) <= now + 300_000 && end > now, 'PURCHASE_POLICY_EXPIRED');
+  const admitted = matchingAdmissions(p, identity);
+  requireThat(admitted.length === 1, 'PACKAGED_PURCHASE_NOT_ADMITTED');
+  requireThat(end - now >= DAY_MS, 'PURCHASE_POLICY_RENEWAL_REQUIRED');
+  return { implementationSha256:identity.implementationSha256, policyRevision:p.revision,
+    policyExpiresAt:p.expiresAt, policySha256, reviewedClientVersion:admitted[0].clientVersion };
+}
+
+export function validatePurchaseAdmission(proof, policyBytes, now = Date.now(), publicKey = PUBLIC_KEY) {
+  const identity = packagedPurchaseIdentity(proof);
+  const policy = parseSignedPurchasePolicy(policyBytes, publicKey);
+  return requirePurchaseAdmission(identity, policy, digest(policyBytes), now);
+}
+
+function validatePurchaseReview(review, request, targets, identities) {
+  requireThat(exactKeys(review, ['kind', 'version', 'sourceCommit', 'sourceSha256', 'previousPolicySha256', 'targets'])
+    && review.kind === 'SFS_RELEASE_PURCHASE_REVIEW_V1' && review.version === request.version
+    && /^\d{1,4}\.\d{1,4}\.\d{1,4}$/.test(review.version) && review.sourceCommit === request.sourceCommit
+    && review.sourceSha256 === request.sourceSha256 && sha(review.previousPolicySha256)
+    && Array.isArray(review.targets) && review.targets.length === targets.length, 'PURCHASE_REVIEW_IDENTITY_MISMATCH');
+  for (const [index, target] of targets.entries()) {
+    const identity = identities[index];
+    const item = review.targets[index];
+    requireThat(exactKeys(item, ['platform', 'architecture', 'implementationSha256', 'canonicalBundleSha256',
+      'installerSha256', 'sourceEvidenceSha256', 'authenticatedAcceptanceSha256', 'acceptance'])
+      && item.platform === identity.platform && item.architecture === identity.architecture
+      && item.implementationSha256 === identity.implementationSha256 && item.canonicalBundleSha256 === identity.canonicalBundleSha256
+      && item.installerSha256 === target.installerSha256 && sha(item.sourceEvidenceSha256) && sha(item.authenticatedAcceptanceSha256)
+      && item.acceptance === 'AUTHENTICATED_EXACT_PURCHASE_VERIFIED', 'PURCHASE_REVIEW_TARGET_MISMATCH');
   }
-  return result;
+}
+
+export function planPurchaseAdmission(targets, request, review, previousBytes, now = Date.now(), publicKey = PUBLIC_KEY) {
+  const previous = parseSignedPurchasePolicy(previousBytes, publicKey), previousSha256 = digest(previousBytes);
+  requireThat(Number.isFinite(now) && Date.parse(previous.publishedAt) <= now, 'PURCHASE_POLICY_CLOCK_MISMATCH');
+  const identities = targets.map(({ proof, platform }) => {
+    const identity = packagedPurchaseIdentity(proof);
+    requireThat(identity.platform === platform && identity.architecture === 'x64', 'PURCHASE_PACKAGE_TARGET_MISMATCH');
+    return identity;
+  });
+  if (review !== undefined) validatePurchaseReview(review, request, targets, identities);
+  try {
+    return { reuse: identities.map(identity => requirePurchaseAdmission(identity, previous, previousSha256, now)) };
+  } catch (error) {
+    if (review === undefined) throw error;
+  }
+  requireThat(review.previousPolicySha256 === previousSha256, 'PURCHASE_REVIEW_IDENTITY_MISMATCH');
+
+  const implementations = [...previous.implementations];
+  for (const [index, item] of review.targets.entries()) {
+    const identity = identities[index];
+    const matches = matchingAdmissions(previous, identity);
+    requireThat(matches.length <= 1, 'PURCHASE_ADMISSION_AMBIGUOUS');
+    if (matches.length === 0) {
+      implementations.push({ clientVersion: request.version, implementationSha256: identity.implementationSha256,
+        protocolSha256: PURCHASE_PROTOCOL_SHA256, platform: identity.platform, architecture: identity.architecture,
+        sourceEvidenceSha256: item.sourceEvidenceSha256, authenticatedAcceptanceSha256: item.authenticatedAcceptanceSha256,
+        acceptance: item.acceptance });
+    }
+  }
+  const revision = previous.revision + 1;
+  requireThat(Number.isSafeInteger(revision) && implementations.length <= 32, 'PURCHASE_POLICY_CAPACITY_EXCEEDED');
+  return { previousSha256, payload: { ...previous, revision, publishedAt: new Date(now).toISOString(),
+    expiresAt: new Date(now + 30 * DAY_MS).toISOString(), implementations } };
+}
+
+export function signPlannedPurchasePolicy(plan, encryptedPem, passphrase, publicKey = PUBLIC_KEY) {
+  const signature = signWithReleaseKey(purchasePolicyBytes(plan.payload), encryptedPem, passphrase, publicKey);
+  const bytes = Buffer.from(JSON.stringify({ payload: plan.payload, signature }, null, 2) + '\n');
+  parseSignedPurchasePolicy(bytes, publicKey);
+  return bytes;
+}
+
+async function inspectPurchaseAdmission(client, targets, request, review) {
+  const release = await client.api(`/releases/tags/${PURCHASE_POLICY_TAG}`);
+  const assets = catalog(await releaseAssets(client, release.id));
+  const policy = assets.get(PURCHASE_POLICY_NAME);
+  requireThat(policy && policy.size <= MAX_PURCHASE_POLICY, 'PURCHASE_POLICY_NOT_PUBLISHED');
+  const downloaded = await client.download(policy.id, policy.size, true);
+  const plan = planPurchaseAdmission(targets, request, review, downloaded.body);
+  if (plan.reuse) return { plan };
+  const archiveName = `protocol-before-${plan.payload.revision}.json`;
+  const pendingName = `protocol-${plan.payload.revision}.pending.json`;
+  requireThat(release.tag_name === PURCHASE_POLICY_TAG && release.draft === false && release.prerelease === true
+    && release.immutable === false && !assets.has(archiveName) && !assets.has(pendingName), 'PURCHASE_POLICY_ASSETS_NOT_READY');
+  return { plan, releaseId: String(release.id), policy, archiveName, pendingName };
+}
+
+async function publicPurchasePolicyHash(fetcher) {
+  const url = `https://github.com/${REPOSITORY}/releases/download/${PURCHASE_POLICY_TAG}/${PURCHASE_POLICY_NAME}`;
+  let response = await fetcher(url, { redirect: 'manual', signal: AbortSignal.timeout(30_000) });
+  if ([301, 302, 303, 307, 308].includes(response.status)) {
+    const location = response.headers.get('location');
+    await response.body?.cancel();
+    const redirect = location ? new URL(location, url) : null;
+    requireThat(redirect?.protocol === 'https:' && !redirect.username && !redirect.password && !redirect.port
+      && ['release-assets.githubusercontent.com', 'objects.githubusercontent.com'].includes(redirect.hostname),
+      'UNEXPECTED_PUBLIC_REDIRECT');
+    response = await fetcher(redirect, { redirect: 'error', signal: AbortSignal.timeout(30_000) });
+  }
+  requireThat(response.ok, 'PUBLIC_PURCHASE_POLICY_UNAVAILABLE');
+  return digest(await boundedBytes(response, MAX_PURCHASE_POLICY));
+}
+
+export async function activatePurchasePolicy(client, change, bytes, fetcher = fetch, pause = delay) {
+  const { plan, releaseId, policy, archiveName, pendingName } = change;
+  const assetPath = id => `/releases/assets/${id}`;
+  const list = async () => catalog(await releaseAssets(client, releaseId));
+  const confirm = (asset, id, name, size) => asset?.id === id && asset.name === name && asset.size === size;
+  const nextSha256 = digest(bytes);
+  requireThat(await publicPurchasePolicyHash(fetcher) === plan.previousSha256, 'PUBLIC_PURCHASE_POLICY_CHANGED');
+  const candidate = await client.upload(releaseId, pendingName, bytes);
+  requireThat(candidate.state === 'uploaded' && candidate.name === pendingName && candidate.size === bytes.length
+    && (await client.download(candidate.id, bytes.length)).sha256 === nextSha256, 'PURCHASE_POLICY_STAGE_MISMATCH');
+
+  const beforeSwitch = await list();
+  requireThat(confirm(beforeSwitch.get(PURCHASE_POLICY_NAME), policy.id, PURCHASE_POLICY_NAME, policy.size)
+    && confirm(beforeSwitch.get(pendingName), candidate.id, pendingName, bytes.length)
+    && !beforeSwitch.has(archiveName) && (await client.download(policy.id, policy.size)).sha256 === plan.previousSha256,
+    'PURCHASE_POLICY_CHANGED_BEFORE_SWITCH');
+
+  try {
+    const archived = await client.api(assetPath(policy.id), 'PATCH', { name: archiveName });
+    requireThat(confirm(archived, policy.id, archiveName, policy.size), 'PURCHASE_POLICY_ARCHIVE_FAILED');
+    const active = await client.api(assetPath(candidate.id), 'PATCH', { name: PURCHASE_POLICY_NAME });
+    requireThat(confirm(active, candidate.id, PURCHASE_POLICY_NAME, bytes.length), 'PURCHASE_POLICY_PROMOTION_FAILED');
+  } catch (switchError) {
+    // A timeout may hide a committed rename. Only restore when the old bytes
+    // remain archived under our name and the live filename is actually empty.
+    const current = await list();
+    if (!current.has(PURCHASE_POLICY_NAME) && confirm(current.get(archiveName), policy.id, archiveName, policy.size)) {
+      const restored = await client.api(assetPath(policy.id), 'PATCH', { name: PURCHASE_POLICY_NAME });
+      requireThat(confirm(restored, policy.id, PURCHASE_POLICY_NAME, policy.size), 'PURCHASE_POLICY_RESTORE_FAILED');
+    }
+    throw switchError;
+  }
+
+  const activated = await list();
+  requireThat(confirm(activated.get(PURCHASE_POLICY_NAME), candidate.id, PURCHASE_POLICY_NAME, bytes.length)
+    && confirm(activated.get(archiveName), policy.id, archiveName, policy.size)
+    && (await client.download(candidate.id, bytes.length)).sha256 === nextSha256
+    && (await client.download(policy.id, policy.size)).sha256 === plan.previousSha256, 'PURCHASE_POLICY_FINAL_READBACK_FAILED');
+
+  for (let attempt = 0; attempt < 12; attempt++) {
+    try { if (await publicPurchasePolicyHash(fetcher) === nextSha256) return; }
+    catch { /* CDN may still serve the previous release URL. Only retry reads. */ }
+    if (attempt < 11) await pause(5_000);
+  }
+  fail('PUBLIC_PURCHASE_POLICY_READBACK_MISMATCH');
 }
 
 function parseJson(bytes) {
@@ -292,7 +445,6 @@ async function inspect(client, inputs, allowedGenerated = []) {
   validateProof(windowsProof, request, windows);
   const linuxProof = request.linuxDeb ? parseJson(actual.get('linux-build-verification.json').body) : null;
   if (linuxProof) validateProof(linuxProof, request, request.assets.find(a => a.name.endsWith('.deb')), true);
-  const purchaseAdmission = await inspectPurchaseAdmission(client, windowsProof, linuxProof);
   const notes = typeof release.body === 'string' ? release.body.trim() : '';
   requireThat(notes.length > 0 && notes.length <= 100_000, 'INVALID_RELEASE_NOTES');
   requireThat(digest(Buffer.from(notes)) === request.releaseNotesSha256, 'RELEASE_NOTES_HASH_MISMATCH');
@@ -301,7 +453,13 @@ async function inspect(client, inputs, allowedGenerated = []) {
     const linux = request.assets.find(a => a.name.endsWith('.deb'));
     validateFeed(actual.get('latest-linux.yml').body, request.version, linux.name, actual.get(linux.name));
   }
-  return { release, assets, request, actual, notes, purchaseAdmission };
+  const purchaseTargets = [{ proof: windowsProof, platform: 'win32', installerSha256: windows.sha256 }];
+  if (linuxProof) purchaseTargets.push({ proof: linuxProof, platform: 'linux',
+    installerSha256: request.assets.find(asset => asset.name.endsWith('.deb')).sha256 });
+  const reviewBytes = actual.get(PURCHASE_REVIEW_NAME)?.body;
+  const purchaseAdmission = await inspectPurchaseAdmission(client, purchaseTargets, request,
+    reviewBytes === undefined ? undefined : parseJson(reviewBytes));
+  return { release, assets, request, actual, notes, purchaseAdmission, purchaseTargets };
 }
 
 export function validateFeed(bytes, version, filename, data) {
@@ -317,7 +475,9 @@ export async function run(mode, env = process.env, fetcher = fetch) {
   requireThat(['verify', 'publish'].includes(mode), 'INVALID_MODE');
   const inputs = validateInputs(env), client = createClient(env.GITHUB_TOKEN, fetcher);
   const result = await inspect(client, inputs);
-  if (mode === 'verify') return { status: 'VERIFIED_DRAFT', ...inputs, assets: result.request.assets.length };
+  const purchasePlan = result.purchaseAdmission.plan;
+  if (mode === 'verify') return { status: 'VERIFIED_DRAFT', ...inputs, assets: result.request.assets.length,
+    purchasePolicy: purchasePlan.reuse ? 'REUSE' : 'SIGN_REVIEWED_UPDATE' };
   const publishedAt = new Date().toISOString(), generated = new Map();
   const targets = [{ name: `Steam-Float-Scanner-Setup-${inputs.version}.exe`, manifest: 'manifest.json', feed: 'latest.yml' },
     ...(result.request.linuxDeb ? [{ name: `Steam-Float-Scanner-${inputs.version}-amd64.deb`, manifest: 'manifest-linux-x64-deb.json', feed: 'latest-linux.yml', linux: true }] : [])];
@@ -329,14 +489,21 @@ export async function run(mode, env = process.env, fetcher = fetch) {
     const manifest = createManifest(unsigned, env.SFS_UPDATE_PRIVATE_KEY_PEM, env.SFS_UPDATE_KEY_PASSPHRASE);
     generated.set(target.manifest, Buffer.from(JSON.stringify(manifest, null, 2) + '\n'));
   }
+  const signedPolicy = purchasePlan.reuse ? null
+    : signPlannedPurchasePolicy(purchasePlan, env.SFS_UPDATE_PRIVATE_KEY_PEM, env.SFS_UPDATE_KEY_PASSPHRASE);
+  if (signedPolicy) {
+    for (const target of result.purchaseTargets) validatePurchaseAdmission(target.proof, signedPolicy);
+  }
   // Drop process-environment copies before any API mutation. Private material never goes to disk.
   delete env.SFS_UPDATE_PRIVATE_KEY_PEM; delete env.SFS_UPDATE_KEY_PASSPHRASE;
+  if (signedPolicy) await activatePurchasePolicy(client, result.purchaseAdmission, signedPolicy, fetcher);
   for (const [name, bytes] of generated) {
     const uploaded = await client.upload(inputs.releaseId, name, bytes);
     const readBack = await client.download(uploaded.id, bytes.length);
     requireThat(readBack.sha256 === digest(bytes), 'SIGNED_ASSET_READBACK_MISMATCH');
   }
   const checked = await inspect(client, inputs, [...generated.keys()]);
+  requireThat(checked.purchaseAdmission.plan.reuse, 'PUBLIC_PURCHASE_POLICY_NOT_READY');
   for (const [name, bytes] of generated) {
     const current = checked.assets.get(name);
     const readBack = await client.download(current.id, bytes.length);
@@ -369,6 +536,7 @@ export async function run(mode, env = process.env, fetcher = fetch) {
     requireThat(bytes === previous.size && hash.digest('hex') === expected, 'PUBLIC_ASSET_HASH_MISMATCH');
   }
   await checkLatest(client, inputs.version);
+  await inspectPurchaseAdmission(client, checked.purchaseTargets, checked.request);
   await client.api(`/releases/${inputs.releaseId}`, 'PATCH', { make_latest: 'true' });
   const latest = await client.api('/releases/latest');
   requireThat(String(latest.id) === inputs.releaseId && latest.immutable === true, 'LATEST_PROMOTION_NOT_CONFIRMED');
