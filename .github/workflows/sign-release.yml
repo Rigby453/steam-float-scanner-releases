@@ -55,7 +55,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          printf '%s\n' '15668ac4a5e0a52298e95547a8a1e1520bdefca867b6880c8b255fb50f6cdecc  tools/sign-release.mjs' | sha256sum --check --strict
+          printf '%s\n' '80339f98247a460f831b60d54c46d0356feae18e3775e31c554d248e5c7ffe5a  tools/sign-release.mjs' | sha256sum --check --strict
           node --test tools/sign-release.test.mjs tools/purchase-admission.test.mjs
       - name: Verify exact draft, native proof and purchase admission without signing secrets
         env:
@@ -84,5 +84,5 @@ jobs:
           SFS_UPDATE_KEY_PASSPHRASE: ${{ secrets.SFS_UPDATE_KEY_PASSPHRASE }}
         run: |
           set -euo pipefail
-          printf '%s\n' '15668ac4a5e0a52298e95547a8a1e1520bdefca867b6880c8b255fb50f6cdecc  tools/sign-release.mjs' | sha256sum --check --strict
+          printf '%s\n' '80339f98247a460f831b60d54c46d0356feae18e3775e31c554d248e5c7ffe5a  tools/sign-release.mjs' | sha256sum --check --strict
           node tools/sign-release.mjs publish
