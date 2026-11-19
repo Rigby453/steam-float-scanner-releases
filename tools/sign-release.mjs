@@ -8,6 +8,7 @@ export const SOURCE_REPOSITORY = 'parserst/steam-float-scanner';
 export const PUBLIC_KEY = '-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAOJb8WpemdYBC80YZzT2rnNwJBMeLc3V1f4oVvwFpVT0=\n-----END PUBLIC KEY-----';
 const API = `https://api.github.com/repos/${REPOSITORY}`;
 const REQUEST_NAME = 'release-source.json';
+const WINDOWS_QUALIFICATION_NAME = 'windows-qualification.json';
 const PURCHASE_REVIEW_NAME = 'purchase-review.json';
 const PURCHASE_POLICY_TAG = 'purchase-compatibility-v1';
 const PURCHASE_POLICY_NAME = 'protocol.json';
@@ -33,20 +34,24 @@ export function validateInputs(env) {
 }
 
 export function validateRequest(request, inputs) {
-  requireThat(exactKeys(request, ['version', 'sourceRepository', 'sourceCommit', 'sourceSha256',
-    'ciRunId', 'releaseNotesSha256', 'assets'])
+  const keys = ['version', 'sourceRepository', 'sourceCommit', 'sourceSha256', 'releaseNotesSha256', 'assets'];
+  const localWindows = request?.qualification === 'WINDOWS_LOCAL_V1';
+  requireThat((localWindows ? exactKeys(request, [...keys, 'qualification'])
+    : exactKeys(request, [...keys, 'ciRunId']) && typeof request.ciRunId === 'string'
+      && /^[1-9][0-9]*$/.test(request.ciRunId))
     && request.sourceRepository === SOURCE_REPOSITORY
     && request.version === inputs.version && request.sourceCommit === inputs.sourceCommit
-    && sha(request.sourceSha256) && typeof request.ciRunId === 'string'
-    && /^[1-9][0-9]*$/.test(request.ciRunId) && sha(request.releaseNotesSha256)
+    && sha(request.sourceSha256) && sha(request.releaseNotesSha256)
     && Array.isArray(request.assets), 'REQUEST_IDENTITY_MISMATCH');
   const linuxDeb = request.assets.some(a => a?.name === `Steam-Float-Scanner-${inputs.version}-amd64.deb`);
+  requireThat(!localWindows || !linuxDeb, 'LOCAL_QUALIFICATION_WINDOWS_ONLY');
   const names = [
     `Steam-Float-Scanner-Setup-${inputs.version}.exe`,
     `Steam-Float-Scanner-Setup-${inputs.version}.exe.blockmap`,
     'build-verification.json', 'latest.yml',
     ...(linuxDeb ? [`Steam-Float-Scanner-${inputs.version}-amd64.deb`, 'linux-build-verification.json', 'latest-linux.yml'] : []),
   ];
+  if (localWindows) names.push(WINDOWS_QUALIFICATION_NAME);
   if (request.assets.some(asset => asset?.name === PURCHASE_REVIEW_NAME)) names.push(PURCHASE_REVIEW_NAME);
   requireThat(Array.isArray(request.assets) && request.assets.length === names.length, 'INVALID_ASSET_COUNT');
   const seen = new Set();
@@ -59,6 +64,17 @@ export function validateRequest(request, inputs) {
   }
   requireThat(names.every(name => seen.has(name)), 'MISSING_ASSET');
   return { ...request, linuxDeb };
+}
+
+export function validateWindowsQualification(proof, request, installer) {
+  requireThat(exactKeys(proof, ['format', 'version', 'sourceCommit', 'sourceSha256', 'installerSha256', 'checks'])
+    && proof.format === 'SFS_WINDOWS_QUALIFICATION_V1'
+    && proof.version === request.version && proof.sourceCommit === request.sourceCommit
+    && proof.sourceSha256 === request.sourceSha256 && proof.installerSha256 === installer.sha256,
+  'WINDOWS_QUALIFICATION_IDENTITY_MISMATCH');
+  const checks = ['typecheck', 'root', 'engine', 'desktop', 'nativePackage', 'packagedFinancial'];
+  requireThat(exactKeys(proof.checks, checks) && checks.every(check => proof.checks[check] === 'PASS'),
+    'WINDOWS_QUALIFICATION_INCOMPLETE');
 }
 
 export function signedPayload(manifest) {
@@ -220,6 +236,8 @@ export function planPurchaseAdmission(targets, request, review, previousBytes, n
     const matches = matchingAdmissions(previous, identity);
     requireThat(matches.length <= 1, 'PURCHASE_ADMISSION_AMBIGUOUS');
     if (matches.length === 0) {
+      requireThat(!previous.implementations.some(row => row.authenticatedAcceptanceSha256 === item.authenticatedAcceptanceSha256),
+        'PURCHASE_REVIEW_HISTORICAL');
       implementations.push({ clientVersion: request.version, implementationSha256: identity.implementationSha256,
         protocolSha256: PURCHASE_PROTOCOL_SHA256, platform: identity.platform, architecture: identity.architecture,
         sourceEvidenceSha256: item.sourceEvidenceSha256, authenticatedAcceptanceSha256: item.authenticatedAcceptanceSha256,
@@ -444,6 +462,9 @@ async function inspect(client, inputs, allowedGenerated = []) {
   const windows = request.assets.find(a => a.name.endsWith('.exe'));
   const windowsProof = parseJson(actual.get('build-verification.json').body);
   validateProof(windowsProof, request, windows);
+  if (request.qualification === 'WINDOWS_LOCAL_V1') {
+    validateWindowsQualification(parseJson(actual.get(WINDOWS_QUALIFICATION_NAME).body), request, windows);
+  }
   const linuxProof = request.linuxDeb ? parseJson(actual.get('linux-build-verification.json').body) : null;
   if (linuxProof) validateProof(linuxProof, request, request.assets.find(a => a.name.endsWith('.deb')), true);
   const notes = typeof release.body === 'string' ? release.body.trim() : '';
