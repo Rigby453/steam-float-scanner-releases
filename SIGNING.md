@@ -71,6 +71,25 @@ Do not attach signed manifests before dispatch. For a Windows-only release,
 omit the three Linux inputs. The fixed signer accepts no arbitrary asset names,
 source scripts, executable helpers, download URLs, or platform targets.
 
+The same workflow checks the exact packaged AUTO_BUY implementation. If a
+current signed policy already admits every platform in the draft and is valid
+for at least 24 more hours, it reuses that policy. A new implementation or a
+policy renewal requires one additional draft asset, `purchase-review.json`.
+The release preparer binds this asset to `release-source.json` like the other
+inputs. The person or system dispatching a release must confirm the source and
+native qualification and the authenticated Steam protocol evidence before
+supplying this record. Test-only evidence does not authorize a new admission.
+
+The review has kind `SFS_RELEASE_PURCHASE_REVIEW_V1` and fields `version`,
+`sourceCommit`, `sourceSha256`, `previousPolicySha256` and `targets`. The previous
+policy digest is computed from the exact currently published `protocol.json`.
+The `targets` array lists Windows first and Linux second when included. Each
+target contains `platform`, `architecture`, `installerSha256`,
+`implementationSha256`, `canonicalBundleSha256`, `sourceEvidenceSha256`,
+`authenticatedAcceptanceSha256` and `acceptance` with value
+`AUTHENTICATED_EXACT_PURCHASE_VERIFIED`. These digests come from the qualified
+package and reviewed evidence. The review file is public once published.
+
 `release-source.json` preserves the existing provenance fields and requires:
 
 ```json
@@ -87,8 +106,9 @@ source scripts, executable helpers, download URLs, or platform targets.
 }
 ```
 
-The `assets` array has exactly eight entries for Windows+Linux or five for
-Windows only. Every entry has exactly `name`, `sha256`, and `bytes`; inventory
+The `assets` array has eight entries for Windows+Linux or five for
+Windows only, plus the purchase review when provided. Every entry has exactly
+`name`, `sha256`, and `bytes`. Inventory
 the exact uploaded bytes. `release-source.json` cannot hash itself. Its SHA256
 is provided separately as dispatch input. Additional existing provenance
 fields such as artifact IDs may remain in that JSON; none is executed.
@@ -118,7 +138,11 @@ that its public key equals the installed application's existing anchor, signs
 the canonical payload with Ed25519, and verifies each signature. Only the
 known signer step receives the key variables. No npm install, archive
 extraction, source checkout, downloaded executable, or artifact script runs
-with the key. It adds `manifest.json` and, when applicable,
+with the key. When admission changes, the same step signs a new revision with
+30 days of validity and retains the previous approved entries. It stages and
+reads back the new policy, archives the previous active asset, and verifies
+the new public `protocol.json` before publishing the installer. It adds
+`manifest.json` and, when applicable,
 `manifest-linux-x64-deb.json` without overwriting anything.
 
 All inputs and signed assets are read back before publication. The workflow

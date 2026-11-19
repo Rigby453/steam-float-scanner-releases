@@ -54,9 +54,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          printf '%s\n' '12088d415fc8553ee0a7491d1457813c2c42204121ca1f20b5a9d866b532c38a  tools/sign-release.mjs' | sha256sum --check --strict
+          printf '%s\n' 'd24d0f5e87655bc518222d314cf537f7e71850f8d5711fd84c713715c3469fc3  tools/sign-release.mjs' | sha256sum --check --strict
           node --test tools/sign-release.test.mjs tools/purchase-admission.test.mjs
-      - name: Verify exact draft and native proof consistency without signing secrets
+      - name: Verify exact draft, native proof and purchase admission without signing secrets
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: node tools/sign-release.mjs verify
@@ -75,7 +75,7 @@ jobs:
           ref: ${{ github.sha }}
           persist-credentials: false
           sparse-checkout: tools
-      - name: Sign exact manifests and publish verified assets
+      - name: Sign reviewed purchase admission and verified update, then publish
         shell: bash
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -83,5 +83,5 @@ jobs:
           SFS_UPDATE_KEY_PASSPHRASE: ${{ secrets.SFS_UPDATE_KEY_PASSPHRASE }}
         run: |
           set -euo pipefail
-          printf '%s\n' '12088d415fc8553ee0a7491d1457813c2c42204121ca1f20b5a9d866b532c38a  tools/sign-release.mjs' | sha256sum --check --strict
+          printf '%s\n' 'd24d0f5e87655bc518222d314cf537f7e71850f8d5711fd84c713715c3469fc3  tools/sign-release.mjs' | sha256sum --check --strict
           node tools/sign-release.mjs publish
