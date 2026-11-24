@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {generateKeyPairSync,sign,createHash} from 'node:crypto';
-import {activatePurchasePolicy, planPurchaseAdmission, signPlannedPurchasePolicy,
+import {activatePurchasePolicy, planPurchaseAdmission, planPurchasePolicyRenewal, signPlannedPurchasePolicy,
  validatePurchaseAdmission, PURCHASE_PROTOCOL_SHA256, run, REPOSITORY, SOURCE_REPOSITORY} from './sign-release.mjs';
 const keys=generateKeyPairSync('ed25519'), key=keys.publicKey.export({type:'spki',format:'pem'});
 const now=Date.parse('2026-11-10T12:00:00Z');
@@ -164,6 +164,31 @@ test('expiring policy renews with a matching review and keeps one entry per exis
  const planned = planPurchaseAdmission(targets, reviewedRequest, review, previous, now, key);
  assert.deepEqual(planned.payload.implementations, JSON.parse(previous).payload.implementations);
  assert.equal(Date.parse(planned.payload.expiresAt) - now, 30 * 86_400_000);
+});
+
+test('standalone renewal restores the same signed admissions and leaves new financial hashes blocked', () => {
+ const previous = policy({ expiresAt: '2026-11-10T11:00:00Z' });
+ const old = JSON.parse(previous).payload;
+ assert.throws(() => validatePurchaseAdmission({ purchaseImplementation: identity }, previous, now, key), /EXPIRED/);
+ const plan = planPurchasePolicyRenewal(previous, sha256(previous), now, key);
+ assert.deepEqual(plan.payload.implementations, old.implementations);
+ assert.equal(plan.payload.revision, old.revision + 1);
+ assert.equal(Date.parse(plan.payload.expiresAt) - now, 30 * 86_400_000);
+ const passphrase = 'temporary-passphrase-for-this-test-only';
+ const encrypted = keys.privateKey.export({ type: 'pkcs8', format: 'pem', cipher: 'aes-256-cbc', passphrase });
+ const renewed = signPlannedPurchasePolicy(plan, encrypted, passphrase, key);
+ assert.equal(validatePurchaseAdmission({ purchaseImplementation: identity }, renewed, now, key).policyRevision, 4);
+ const unreviewed = { ...identity, implementationSha256: 'f'.repeat(64) };
+ assert.throws(() => validatePurchaseAdmission({ purchaseImplementation: unreviewed }, renewed, now, key), /NOT_ADMITTED/);
+ assert.throws(() => planPurchasePolicyRenewal(renewed, sha256(previous), now, key), /DIGEST_MISMATCH/);
+});
+
+test('standalone renewal rejects stale operator input, bad signatures, and early renewal', () => {
+ const previous = policy();
+ assert.throws(() => planPurchasePolicyRenewal(previous, sha256(previous), now, key), /RENEWAL_NOT_DUE/);
+ assert.throws(() => planPurchasePolicyRenewal(previous, '0'.repeat(64), now, key), /DIGEST_MISMATCH/);
+ assert.throws(() => planPurchasePolicyRenewal(previous, sha256(previous), now), /INVALID_PURCHASE_POLICY_SIGNATURE/);
+ assert.throws(() => planPurchasePolicyRenewal(previous, sha256(previous), Date.parse('2026-11-09T23:00:00Z'), key), /CLOCK_MISMATCH/);
 });
 
 function publicationCase({ failPromotion = false, ambiguousPromotion = false, publicStale = false } = {}) {

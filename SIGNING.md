@@ -143,6 +143,15 @@ acceptance is not job completion.
 
 ## What the workflow verifies
 
+To renew an expired or imminently expiring `protocol.json` for previously
+approved implementations, review the current entries, then dispatch
+`sign-release.yml` on `main` with `operation=renew-purchase-policy`, the current
+stable version in `version`, and `previous_policy_sha256` set to the SHA-256
+of the active public asset. The signer verifies the current original-key
+signature and exact asset digest, preserves every admission entry, and extends
+the expiry by 30 days from signing time. The existing release-signing jobs and
+asset verification apply. Installer and release pointers are untouched.
+
 The first job has no signing secrets. It checks workflow identity, new stable
 version, exact draft ID/tag, complete asset inventory, bounded downloads and
 hashes, native proof source/version/installer consistency, private repository identity,
