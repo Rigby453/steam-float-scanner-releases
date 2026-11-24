@@ -22,10 +22,14 @@ const record = x => x !== null && typeof x === 'object' && !Array.isArray(x);
 const sha = x => typeof x === 'string' && /^[0-9a-f]{64}$/.test(x);
 const exactKeys = (x, keys) => record(x) && Object.keys(x).sort().join('|') === [...keys].sort().join('|');
 
-export function validateInputs(env) {
+function validateWorkflowContext(env) {
   requireThat(env.GITHUB_REPOSITORY === REPOSITORY && env.GITHUB_REF === 'refs/heads/main'
     && env.GITHUB_EVENT_NAME === 'workflow_dispatch', 'UNTRUSTED_WORKFLOW_CONTEXT');
   requireThat(env.GITHUB_WORKFLOW_REF === `${REPOSITORY}/.github/workflows/sign-release.yml@refs/heads/main`, 'UNTRUSTED_WORKFLOW_FILE');
+}
+
+export function validateInputs(env) {
+  validateWorkflowContext(env);
   requireThat(/^[0-9]+$/.test(env.SFS_RELEASE_ID ?? ''), 'INVALID_RELEASE_ID');
   requireThat(/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(env.SFS_VERSION ?? ''), 'INVALID_STABLE_VERSION');
   requireThat(/^[0-9a-f]{40}$/.test(env.SFS_SOURCE_COMMIT ?? ''), 'INVALID_SOURCE_COMMIT');
@@ -250,6 +254,17 @@ export function planPurchaseAdmission(targets, request, review, previousBytes, n
     expiresAt: new Date(now + 30 * DAY_MS).toISOString(), implementations } };
 }
 
+export function planPurchasePolicyRenewal(previousBytes, expectedSha256, now = Date.now(), publicKey = PUBLIC_KEY) {
+  requireThat(sha(expectedSha256) && digest(previousBytes) === expectedSha256, 'PURCHASE_POLICY_RENEWAL_DIGEST_MISMATCH');
+  const previous = parseSignedPurchasePolicy(previousBytes, publicKey);
+  requireThat(Number.isFinite(now) && Date.parse(previous.publishedAt) <= now, 'PURCHASE_POLICY_CLOCK_MISMATCH');
+  requireThat(Date.parse(previous.expiresAt) - now < DAY_MS, 'PURCHASE_POLICY_RENEWAL_NOT_DUE');
+  const revision = previous.revision + 1;
+  requireThat(Number.isSafeInteger(revision), 'PURCHASE_POLICY_CAPACITY_EXCEEDED');
+  return { previousSha256: expectedSha256, payload: { ...previous, revision, publishedAt: new Date(now).toISOString(),
+    expiresAt: new Date(now + 30 * DAY_MS).toISOString() } };
+}
+
 export function signPlannedPurchasePolicy(plan, encryptedPem, passphrase, publicKey = PUBLIC_KEY) {
   const signature = signWithReleaseKey(purchasePolicyBytes(plan.payload), encryptedPem, passphrase, publicKey);
   const bytes = Buffer.from(JSON.stringify({ payload: plan.payload, signature }, null, 2) + '\n');
@@ -257,19 +272,52 @@ export function signPlannedPurchasePolicy(plan, encryptedPem, passphrase, public
   return bytes;
 }
 
-async function inspectPurchaseAdmission(client, targets, request, review) {
+async function readPurchasePolicy(client) {
   const release = await client.api(`/releases/tags/${PURCHASE_POLICY_TAG}`);
   const assets = catalog(await releaseAssets(client, release.id));
   const policy = assets.get(PURCHASE_POLICY_NAME);
   requireThat(policy && policy.size <= MAX_PURCHASE_POLICY, 'PURCHASE_POLICY_NOT_PUBLISHED');
   const downloaded = await client.download(policy.id, policy.size, true);
-  const plan = planPurchaseAdmission(targets, request, review, downloaded.body);
-  if (plan.reuse) return { plan };
+  return { release, assets, policy, bytes: downloaded.body };
+}
+
+function planPurchasePolicyActivation({ release, assets, policy }, plan) {
   const archiveName = `protocol-before-${plan.payload.revision}.json`;
   const pendingName = `protocol-${plan.payload.revision}.pending.json`;
   requireThat(release.tag_name === PURCHASE_POLICY_TAG && release.draft === false && release.prerelease === true
     && release.immutable === false && !assets.has(archiveName) && !assets.has(pendingName), 'PURCHASE_POLICY_ASSETS_NOT_READY');
   return { plan, releaseId: String(release.id), policy, archiveName, pendingName };
+}
+
+async function inspectPurchaseAdmission(client, targets, request, review) {
+  const active = await readPurchasePolicy(client);
+  const plan = planPurchaseAdmission(targets, request, review, active.bytes);
+  return plan.reuse ? { plan } : planPurchasePolicyActivation(active, plan);
+}
+
+async function renewPurchasePolicy(mode, env, fetcher) {
+  validateWorkflowContext(env);
+  const version = env.SFS_VERSION ?? '', expectedSha256 = env.SFS_PREVIOUS_POLICY_SHA256;
+  requireThat(/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(version), 'INVALID_STABLE_VERSION');
+  requireThat(sha(expectedSha256), 'INVALID_PURCHASE_POLICY_RENEWAL_DIGEST');
+  const client = createClient(env.GITHUB_TOKEN, fetcher);
+  const latest = await client.api('/releases/latest');
+  requireThat(latest.tag_name === `v${version}` && latest.immutable === true, 'PURCHASE_POLICY_RENEWAL_LATEST_MISMATCH');
+  const active = await readPurchasePolicy(client);
+  const change = planPurchasePolicyActivation(active, planPurchasePolicyRenewal(active.bytes, expectedSha256));
+  const { plan } = change;
+  const result = { version, previousSha256: expectedSha256, revision: plan.payload.revision,
+    expiresAt: plan.payload.expiresAt, reviewedImplementations: plan.payload.implementations.length };
+  if (mode === 'verify') {
+    requireThat(await publicPurchasePolicyHash(fetcher) === expectedSha256, 'PUBLIC_PURCHASE_POLICY_CHANGED');
+    return { status: 'VERIFIED_PURCHASE_POLICY_RENEWAL', ...result };
+  }
+  const signed = signPlannedPurchasePolicy(plan, env.SFS_UPDATE_PRIVATE_KEY_PEM, env.SFS_UPDATE_KEY_PASSPHRASE);
+  delete env.SFS_UPDATE_PRIVATE_KEY_PEM; delete env.SFS_UPDATE_KEY_PASSPHRASE;
+  await activatePurchasePolicy(client, change, signed, fetcher);
+  const currentLatest = await client.api('/releases/latest');
+  requireThat(currentLatest.id === latest.id, 'PURCHASE_POLICY_RENEWAL_LATEST_CHANGED');
+  return { status: 'PUBLISHED_PURCHASE_POLICY_RENEWAL', ...result, sha256: digest(signed) };
 }
 
 async function publicPurchasePolicyHash(fetcher) {
@@ -495,6 +543,9 @@ export function validateFeed(bytes, version, filename, data) {
 
 export async function run(mode, env = process.env, fetcher = fetch) {
   requireThat(['verify', 'publish'].includes(mode), 'INVALID_MODE');
+  const operation = env.SFS_OPERATION || 'release';
+  requireThat(['release', 'renew-purchase-policy'].includes(operation), 'INVALID_OPERATION');
+  if (operation === 'renew-purchase-policy') return renewPurchasePolicy(mode, env, fetcher);
   const inputs = validateInputs(env), client = createClient(env.GITHUB_TOKEN, fetcher);
   const result = await inspect(client, inputs);
   const purchasePlan = result.purchaseAdmission.plan;

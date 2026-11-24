@@ -1,24 +1,31 @@
 name: Sign and publish verified Scanner release
-run-name: Publish SFS ${{ inputs.version }} (draft ${{ inputs.release_id }})
+run-name: ${{ inputs.operation == 'renew-purchase-policy' && format('Renew SFS purchase policy for {0}', inputs.version) || format('Publish SFS {0} (draft {1})', inputs.version, inputs.release_id) }}
 
 on:
   workflow_dispatch:
     inputs:
+      operation:
+        description: Publish a reviewed release or renew admissions already signed by the release key
+        type: choice
+        default: release
+        options:
+          - release
+          - renew-purchase-policy
       release_id:
-        description: Existing new stable draft release ID
-        required: true
+        description: Existing new stable draft release ID (release only)
         type: string
       version:
-        description: Exact stable version, for example 0.2.149
+        description: Draft version (release) or expected current stable version (renewal)
         required: true
         type: string
       source_commit:
-        description: Exact 40-character reviewed source commit
-        required: true
+        description: Exact 40-character reviewed source commit (release only)
         type: string
       source_record_sha256:
-        description: Exact SHA256 of release-source.json in the draft
-        required: true
+        description: Exact SHA256 of release-source.json in the draft (release only)
+        type: string
+      previous_policy_sha256:
+        description: SHA256 of the current public protocol.json after review (renewal only)
         type: string
 
 permissions:
@@ -29,6 +36,8 @@ concurrency:
   cancel-in-progress: false
 
 env:
+  SFS_OPERATION: ${{ inputs.operation }}
+  SFS_PREVIOUS_POLICY_SHA256: ${{ inputs.previous_policy_sha256 }}
   SFS_RELEASE_ID: ${{ inputs.release_id }}
   SFS_VERSION: ${{ inputs.version }}
   SFS_SOURCE_COMMIT: ${{ inputs.source_commit }}
@@ -55,9 +64,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          printf '%s\n' '80339f98247a460f831b60d54c46d0356feae18e3775e31c554d248e5c7ffe5a  tools/sign-release.mjs' | sha256sum --check --strict
+          printf '%s\n' 'e3eaf6fb94cdef409dffa53e8335ad909d964989066cba61e1fc010b0ee43e1c  tools/sign-release.mjs' | sha256sum --check --strict
           node --test tools/sign-release.test.mjs tools/purchase-admission.test.mjs
-      - name: Verify exact draft, native proof and purchase admission without signing secrets
+      - name: Verify exact release or renewal inputs without signing secrets
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: node tools/sign-release.mjs verify
@@ -76,7 +85,7 @@ jobs:
           ref: ${{ github.sha }}
           persist-credentials: false
           sparse-checkout: tools
-      - name: Sign reviewed purchase admission and verified update, then publish
+      - name: Sign and publish verified update or policy renewal
         shell: bash
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -84,5 +93,5 @@ jobs:
           SFS_UPDATE_KEY_PASSPHRASE: ${{ secrets.SFS_UPDATE_KEY_PASSPHRASE }}
         run: |
           set -euo pipefail
-          printf '%s\n' '80339f98247a460f831b60d54c46d0356feae18e3775e31c554d248e5c7ffe5a  tools/sign-release.mjs' | sha256sum --check --strict
+          printf '%s\n' 'e3eaf6fb94cdef409dffa53e8335ad909d964989066cba61e1fc010b0ee43e1c  tools/sign-release.mjs' | sha256sum --check --strict
           node tools/sign-release.mjs publish
