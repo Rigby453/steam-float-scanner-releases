@@ -102,9 +102,9 @@ function releaseHarness(admitted=true) {
  SFS_RELEASE_ID:'123',SFS_VERSION:version,SFS_SOURCE_COMMIT:sourceCommit,SFS_REQUEST_SHA256:digest(requestBytes),GITHUB_TOKEN:'fixture-not-a-real-token'};
  return {env,fetcher,calls};
 }
-test('full publication path blocks an untrusted admission before signing or any API mutation',async()=>{
+for (const operation of ['release', 'admit-purchase-policy']) test(operation+' blocks an untrusted admission before signing or any API mutation',async()=>{
  const h=releaseHarness();
- await assert.rejects(run('publish',h.env,h.fetcher),/INVALID_PURCHASE_POLICY_SIGNATURE/);
+ await assert.rejects(run('publish',{...h.env,SFS_OPERATION:operation},h.fetcher),/INVALID_PURCHASE_POLICY_SIGNATURE/);
  assert(h.calls.every(call=>call.method==='GET'));
  assert(!h.calls.some(call=>call.url.startsWith('https://uploads.github.com')));
 });

@@ -541,14 +541,39 @@ export function validateFeed(bytes, version, filename, data) {
   requireThat(match && Number.isFinite(Date.parse(match[1])), 'UNEXPECTED_UPDATE_FEED');
 }
 
+function signReviewedPurchaseAdmission(result, env) {
+  const plan = result.purchaseAdmission.plan;
+  if (plan.reuse) return null;
+  const bytes = signPlannedPurchasePolicy(plan, env.SFS_UPDATE_PRIVATE_KEY_PEM, env.SFS_UPDATE_KEY_PASSPHRASE);
+  for (const target of result.purchaseTargets) validatePurchaseAdmission(target.proof, bytes);
+  return bytes;
+}
+
 export async function run(mode, env = process.env, fetcher = fetch) {
   requireThat(['verify', 'publish'].includes(mode), 'INVALID_MODE');
   const operation = env.SFS_OPERATION || 'release';
-  requireThat(['release', 'renew-purchase-policy'].includes(operation), 'INVALID_OPERATION');
+  requireThat(['release', 'renew-purchase-policy', 'admit-purchase-policy'].includes(operation), 'INVALID_OPERATION');
   if (operation === 'renew-purchase-policy') return renewPurchasePolicy(mode, env, fetcher);
   const inputs = validateInputs(env), client = createClient(env.GITHUB_TOKEN, fetcher);
   const result = await inspect(client, inputs);
   const purchasePlan = result.purchaseAdmission.plan;
+  if (operation === 'admit-purchase-policy') {
+    const latest = await client.api('/releases/latest');
+    const previousHash = purchasePlan.reuse?.[0].policySha256 ?? purchasePlan.previousSha256;
+    requireThat(await publicPurchasePolicyHash(fetcher) === previousHash, 'PUBLIC_PURCHASE_POLICY_CHANGED');
+    if (mode === 'verify') return { status: 'VERIFIED_PURCHASE_ADMISSION', ...inputs };
+    const bytes = signReviewedPurchaseAdmission(result, env);
+    delete env.SFS_UPDATE_PRIVATE_KEY_PEM; delete env.SFS_UPDATE_KEY_PASSPHRASE;
+    if (bytes) await activatePurchasePolicy(client, result.purchaseAdmission, bytes, fetcher);
+    const active = await readPurchasePolicy(client);
+    const sha256 = digest(active.bytes);
+    requireThat(sha256 === (bytes ? digest(bytes) : previousHash)
+      && await publicPurchasePolicyHash(fetcher) === sha256, 'PUBLIC_PURCHASE_POLICY_READBACK_MISMATCH');
+    const admissions = result.purchaseTargets.map(target => validatePurchaseAdmission(target.proof, active.bytes));
+    checkDraft(await client.api(`/releases/${inputs.releaseId}`), inputs);
+    requireThat((await client.api('/releases/latest')).id === latest.id, 'LATEST_RELEASE_CHANGED');
+    return { status: 'PURCHASE_ADMITTED', ...inputs, sha256, admissions };
+  }
   if (mode === 'verify') return { status: 'VERIFIED_DRAFT', ...inputs, assets: result.request.assets.length,
     purchasePolicy: purchasePlan.reuse ? 'REUSE' : 'SIGN_REVIEWED_UPDATE' };
   const publishedAt = new Date().toISOString(), generated = new Map();
@@ -562,11 +587,7 @@ export async function run(mode, env = process.env, fetcher = fetch) {
     const manifest = createManifest(unsigned, env.SFS_UPDATE_PRIVATE_KEY_PEM, env.SFS_UPDATE_KEY_PASSPHRASE);
     generated.set(target.manifest, Buffer.from(JSON.stringify(manifest, null, 2) + '\n'));
   }
-  const signedPolicy = purchasePlan.reuse ? null
-    : signPlannedPurchasePolicy(purchasePlan, env.SFS_UPDATE_PRIVATE_KEY_PEM, env.SFS_UPDATE_KEY_PASSPHRASE);
-  if (signedPolicy) {
-    for (const target of result.purchaseTargets) validatePurchaseAdmission(target.proof, signedPolicy);
-  }
+  const signedPolicy = signReviewedPurchaseAdmission(result, env);
   // Drop process-environment copies before any API mutation. Private material never goes to disk.
   delete env.SFS_UPDATE_PRIVATE_KEY_PEM; delete env.SFS_UPDATE_KEY_PASSPHRASE;
   if (signedPolicy) await activatePurchasePolicy(client, result.purchaseAdmission, signedPolicy, fetcher);

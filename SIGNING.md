@@ -143,6 +143,12 @@ acceptance is not job completion.
 
 ## What the workflow verifies
 
+To issue purchase admission on its own, stage the qualified draft with the Windows publisher's
+`--stage-only` option. Dispatch `sign-release.yml` on `main` with `operation=admit-purchase-policy`
+and the same `release_id`, `version`, `source_commit` and `source_record_sha256` as a release.
+The signer checks the draft inventory, package proof, qualification and purchase review, verifies the
+public policy with the original key and returns the admissions. The installer stays in draft.
+
 To renew an expired or imminently expiring `protocol.json` for previously
 approved implementations, review the current entries, then dispatch
 `sign-release.yml` on `main` with `operation=renew-purchase-policy`, the current
